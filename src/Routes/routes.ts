@@ -1,0 +1,43 @@
+import express, { Application } from "express";
+import Authroutes from "./AuthRoutes/Auth";
+import ContactRoutes from "./contactRoutes/contact";
+import HeroRoutes from "./heroRoutes/hero";
+import FaqRoutes from "./faqRoutes/faq";
+import TestimonialRoutes from "./testimonialRoutes/testimonial";
+import ServiceRoutes from "./serviceRoutes/service";
+import PortfolioRoutes from "./portfolio/portfolio";
+import HeroRoutesAdmin from "./heroRoutes/hero";
+import AboutRoutes from "./aboutRoutes/about";
+import AboutHeroRoutes from "./aboutRoutes/aboutHero";
+import MissionVisionRoutes from "./aboutRoutes/missionVision";
+import WhoWeAreRoutes from "./aboutRoutes/whoWeAre";
+import ValuesRoutes from "./aboutRoutes/values";
+import StandOutRoutes from "./aboutRoutes/standOut";
+import LegalRoutes from "../Routes/legal/legal";
+import DashboardRoutes from "./dashboard/dashboard";
+import BlogRoutes from "./blog/blog";
+
+const route: Application = express();
+route.use("/api/auth", Authroutes);
+route.use("/api/contact", ContactRoutes);
+route.use("/api/hero", HeroRoutes);
+route.use("/api/about/hero", AboutHeroRoutes);
+route.use("/api/about/mission-vision", MissionVisionRoutes);
+route.use("/api/about/who-we-are", WhoWeAreRoutes);
+route.use("/api/about/values", ValuesRoutes);
+route.use("/api/about/stand-out", StandOutRoutes);
+// Admin hero (landing) endpoints expected by frontend
+route.use("/api/admin/landing/hero-sections", HeroRoutesAdmin);
+route.use("/api/admin/hero-sections", HeroRoutesAdmin);
+route.use("/api/admin/landing/about-sections", AboutRoutes);
+route.use("/api/admin/about-sections", AboutRoutes);
+route.use("/api/admin/faq", FaqRoutes);
+route.use("/api/admin/testimonials", TestimonialRoutes);
+route.use("/api/services", ServiceRoutes);
+route.use("/api/portfolio", PortfolioRoutes);
+route.use("/api/legal", LegalRoutes);
+route.use("/api/admin/dashboard", DashboardRoutes);
+route.use("/api/blog", BlogRoutes);
+
+
+export default route;
