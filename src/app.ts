@@ -16,7 +16,9 @@ import rateLimit from "express-rate-limit";
 const app: Application = express();
 
 app.disable('x-powered-by');
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
 const allowedOrigins = [
   "https://nexusappdevelopers.com",
