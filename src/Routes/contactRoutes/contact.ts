@@ -34,14 +34,14 @@ const router = express.Router();
 // Public: contact us
 router.post("/add", validateContact as any, addContact as any);
 
-// Optional: admin listing of contacts
-router.get("/get", getContacts as any);
+// Private: admin listing of contacts
+router.get("/get", passport.authenticate("jwt", { session: false }), getContacts as any);
 
 // Update contact status (e.g., resolve query)
-router.patch("/update-status/:id",  updateContactStatus as any);
+router.patch("/update-status/:id", passport.authenticate("jwt", { session: false }), updateContactStatus as any);
 
 // Delete contact
-router.delete("/:id", deleteContact as any);
+router.delete("/:id", passport.authenticate("jwt", { session: false }), deleteContact as any);
 
 // Reply to contact
 router.post("/reply", passport.authenticate("jwt", { session: false }), replyToContact as any);
