@@ -28,16 +28,18 @@ const storage = multer.diskStorage({
 // Allow any single file field (common frontend names: profileImageUrl, profileImage, image, file)
 const upload = multer({ storage }).any();
 
-// List with pagination/search
+import passport from "passport";
+
+// List with pagination/search (publicly readable for website)
 router.get("/", getTestimonials as any);
 
 // Create (supports multipart/form-data; any single file field)
-router.post("/add", upload, createTestimonial as any);
+router.post("/add", passport.authenticate("jwt", { session: false }), upload, createTestimonial as any);
 
 // Update or delete (POST {} to delete) for frontend compatibility; accepts optional file
-router.post("/:id", upload, upsertTestimonial as any);
+router.post("/:id", passport.authenticate("jwt", { session: false }), upload, upsertTestimonial as any);
 
 // Explicit delete
-router.delete("/:id", deleteTestimonial as any);
+router.delete("/:id", passport.authenticate("jwt", { session: false }), deleteTestimonial as any);
 
 export default router;

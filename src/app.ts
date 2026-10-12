@@ -10,12 +10,14 @@ import { Admin } from "./models/AdminModal/AdminModal";
 import { AdminResponse } from "./types/admin";
 import cors from "cors";
 import helmet from "helmet";
+import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 
 // instantize an app from express() function
 const app: Application = express();
 
 app.disable('x-powered-by');
+app.use(cookieParser());
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
@@ -57,8 +59,19 @@ const loginLimiter = rateLimit({
 
 app.use('/api/', apiLimiter);
 app.use('/api/auth/login', loginLimiter);
+
+const cookieExtractor = (req: express.Request): string | null => {
+  if (req && req.cookies && req.cookies.nexus_session) {
+    return req.cookies.nexus_session;
+  }
+  return null;
+};
+
 const opts: StrategyOptions = {
-  jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+  jwtFromRequest: ExtractJwt.fromExtractors([
+    cookieExtractor,
+    ExtractJwt.fromAuthHeaderAsBearerToken()
+  ]),
   secretOrKey: process.env.JWT_SECRET as string, // Ensure JWT_SECRET is defined in your environment variables
 };
 
