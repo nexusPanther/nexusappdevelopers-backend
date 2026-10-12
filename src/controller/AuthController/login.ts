@@ -49,6 +49,15 @@ const Login = async (req: Request, res: Response): Promise<Response> => {
       updatedAt: (admin as any).updatedAt,
     };
 
+    const isProduction = process.env.NODE_ENV === "production";
+    res.cookie("nexus_session", token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? "strict" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: "/",
+    });
+
     return sendSuccessResponse(res, { user: payload, token }, "Login successful");
   } catch (error: any) {
     console.error("Login error:", error?.message || error);
