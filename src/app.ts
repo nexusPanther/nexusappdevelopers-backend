@@ -90,10 +90,12 @@ passport.use(
     }
   })
 );
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ limit: "100mb", extended: true }));
 // Static files for uploads (e.g., /uploads/testimonials/<file>)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+app.use("/static", express.static(path.join(__dirname, "../public/static")));
+app.use("/public", express.static(path.join(__dirname, "../public")));
 
 //MongoDb setup
 connectToDatabase();
