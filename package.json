@@ -4,7 +4,7 @@
   "main": "app.ts",
   "scripts": {
     "build": "tsc",
-    "start": "npx tsc && nodemon node build/app.js"
+    "start": "npx tsc && nodemon build/app.js"
   },
   "keywords": [],
   "author": "",
