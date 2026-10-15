@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "main": "app.ts",
   "scripts": {
-    "build": "tsc",
-    "start": "npx tsc && nodemon node build/app.js"
+    "build": "node api.js && tsc",
+    "start": "node api.js && npx tsc && nodemon node build/app.js"
   },
   "keywords": [],
   "author": "",
