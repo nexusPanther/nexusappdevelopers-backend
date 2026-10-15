@@ -43,6 +43,10 @@ const deleteLocalUploadIfExists = (url?: string) => {
       // ignore URL parse errors
     }
 
+    if (pathname.startsWith("/api/uploads/")) {
+      pathname = pathname.replace("/api/uploads/", "/uploads/");
+    }
+
     if (
       !pathname.startsWith("/uploads/testimonials") &&
       !pathname.startsWith("/static/img/testimonials") &&
@@ -392,8 +396,22 @@ export const upsertTestimonial = async (req: Request, res: Response): Promise<Re
       update.profileImageUrl = ensureFullUrl(fields.profileImageUrl, baseUrl);
     }
 
-    // Video File update
-    if (videoFile) {
+    // Video File update or removal
+    const shouldRemoveVideo =
+      req.body.removeVideo === "true" ||
+      req.body.removeVideo === true ||
+      req.body.deleteVideo === "true" ||
+      req.body.deleteVideo === true ||
+      req.body.videoUrl === "" ||
+      req.body.video === "";
+
+    if (shouldRemoveVideo && !videoFile) {
+      update.videoUrl = "";
+      update.videoThumbnail = "";
+      update.isVideo = false;
+      deleteLocalUploadIfExists(existing.videoUrl);
+      deleteLocalUploadIfExists(existing.videoThumbnail);
+    } else if (videoFile) {
       const newVideoUrl = ensureFullUrl(resolveUploadedUrlPath(videoFile), baseUrl);
       update.videoUrl = newVideoUrl;
       update.isVideo = true;

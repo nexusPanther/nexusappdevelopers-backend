@@ -44,7 +44,7 @@ const TestimonialSchema = new mongoose.Schema(
       type: String,
       required: [true, "Testimonial quote/description is required"],
       trim: true,
-      maxlength: 2000,
+      maxlength: 10000,
     },
     rating: {
       type: Number,
