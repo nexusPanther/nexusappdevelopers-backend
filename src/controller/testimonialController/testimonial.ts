@@ -1,33 +1,32 @@
 import { Request, Response } from "express";
 import path from "path";
 import fs from "fs";
-import crypto from "crypto";
 import { Testimonial } from "../../models/Testimonial/testimonialModal";
-import {
-  sendErrorResponse,
-  sendSuccessResponse,
-} from "../../utils/responseFun";
+import { sendErrorResponse, sendSuccessResponse } from "../../utils/responseFun";
 
-const buildBaseUrl = (req: Request) => {
+const buildBaseUrl = (req: Request): string => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
   if (envBase) return envBase;
   return `${req.protocol}://${req.get("host")}`;
 };
 
-const ensureFullUrl = (maybePath: string | undefined, baseUrl: string): string | undefined => {
+export const ensureFullUrl = (maybePath: string | undefined, baseUrl: string): string | undefined => {
   if (!maybePath) return undefined;
-  
-  // Handle comma-separated URLs (cleanup duplicates)
+
+  // Handle comma-separated URLs (cleanup duplicates if any)
   if (maybePath.includes(",")) {
-    const urls = maybePath.split(",").map(u => u.trim()).filter(u => u);
-    // Remove duplicates and take the first one
-    const uniqueUrls = [...new Set(urls)];
-    maybePath = uniqueUrls[0];
+    const urls = maybePath
+      .split(",")
+      .map((u) => u.trim())
+      .filter((u) => u);
+    maybePath = urls[0];
   }
-  
-  // Already absolute
-  if (maybePath.startsWith("http://") || maybePath.startsWith("https://")) return maybePath;
-  // Ensure it starts with /
+
+  // Already absolute URL
+  if (maybePath.startsWith("http://") || maybePath.startsWith("https://")) {
+    return maybePath;
+  }
+
   const normalized = maybePath.startsWith("/") ? maybePath : `/${maybePath}`;
   return `${baseUrl}${normalized}`;
 };
@@ -35,7 +34,6 @@ const ensureFullUrl = (maybePath: string | undefined, baseUrl: string): string |
 const deleteLocalUploadIfExists = (url?: string) => {
   try {
     if (!url) return;
-    // Extract pathname if absolute URL
     let pathname = url;
     try {
       if (url.startsWith("http://") || url.startsWith("https://")) {
@@ -44,46 +42,35 @@ const deleteLocalUploadIfExists = (url?: string) => {
     } catch (_) {
       // ignore URL parse errors
     }
-    if (!pathname.startsWith("/uploads/testimonials")) return;
-    const abs = path.join(process.cwd(), pathname.replace(/^\/+/, ""));
-    if (fs.existsSync(abs)) {
-      fs.unlinkSync(abs);
+
+    if (
+      !pathname.startsWith("/uploads/testimonials") &&
+      !pathname.startsWith("/static/img/testimonials") &&
+      !pathname.startsWith("/static/videos")
+    ) {
+      return;
+    }
+
+    // Try relative to process.cwd() or process.cwd()/public
+    const absDirect = path.join(process.cwd(), pathname.replace(/^\/+/, ""));
+    const absPublic = path.join(process.cwd(), "public", pathname.replace(/^\/+/, ""));
+
+    if (fs.existsSync(absDirect)) {
+      fs.unlinkSync(absDirect);
+    } else if (fs.existsSync(absPublic)) {
+      fs.unlinkSync(absPublic);
     }
   } catch (err) {
     console.error("deleteLocalUploadIfExists error:", (err as any)?.message || err);
   }
 };
 
-const calculateFileHash = (filePath: string): string => {
-  const fileBuffer = fs.readFileSync(filePath);
-  const hashSum = crypto.createHash("sha256");
-  hashSum.update(fileBuffer);
-  return hashSum.digest("hex");
-};
-
-const areFilesIdentical = (file1Path: string, file2Path: string): boolean => {
-  try {
-    if (!fs.existsSync(file1Path) || !fs.existsSync(file2Path)) return false;
-    const stats1 = fs.statSync(file1Path);
-    const stats2 = fs.statSync(file2Path);
-    
-    // Quick size check
-    if (stats1.size !== stats2.size) return false;
-    
-    // Hash comparison for content
-    return calculateFileHash(file1Path) === calculateFileHash(file2Path);
-  } catch (err) {
-    console.error("areFilesIdentical error:", (err as any)?.message || err);
-    return false;
-  }
-};
-
-// Normalize multipart/form-data fields (strings) into typed values
+// Normalize multipart/form-data fields into properly typed values
 const normalizeFields = (body: any) => {
   const bool = (val: any) => {
-    if (val === undefined) return undefined;
+    if (val === undefined || val === null) return undefined;
     if (typeof val === "boolean") return val;
-    const v = String(val).toLowerCase();
+    const v = String(val).toLowerCase().trim();
     return v === "true" || v === "1";
   };
 
@@ -93,79 +80,198 @@ const normalizeFields = (body: any) => {
     return s === "" ? undefined : s;
   };
 
+  const num = (val: any) => {
+    if (val === undefined || val === null) return undefined;
+    const n = Number(val);
+    return isNaN(n) ? undefined : n;
+  };
+
+  // Support description or testimonial
+  const description = clean(body.description) || clean(body.testimonial);
+
   return {
     name: clean(body.name),
-    description: clean(body.description),
-    profileImageUrl: clean(body.profileImageUrl),
-    videoUrl: clean(body.videoUrl),
     designation: clean(body.designation),
-    testimonial: clean(body.testimonial),
+    description,
+    profileImageUrl: clean(body.profileImageUrl),
+    rating: num(body.rating),
+    isVideo: bool(body.isVideo),
+    videoUrl: clean(body.videoUrl),
+    videoThumbnail: clean(body.videoThumbnail),
+    videoDuration: clean(body.videoDuration),
+    isFeatured: bool(body.isFeatured),
+    orderIndex: num(body.orderIndex),
+    status: clean(body.status) as "active" | "inactive" | undefined,
     isActive: bool(body.isActive),
   };
 };
 
-// Create testimonial
+// Extract uploaded files from Multer
+const extractFiles = (req: Request) => {
+  let profileFile: Express.Multer.File | undefined;
+  let videoFile: Express.Multer.File | undefined;
+  let thumbnailFile: Express.Multer.File | undefined;
+
+  // Case 1: multer.fields() or dictionary of files
+  if (req.files && !Array.isArray(req.files)) {
+    const filesDict = req.files as { [fieldname: string]: Express.Multer.File[] };
+    if (filesDict.profileFile?.[0]) profileFile = filesDict.profileFile[0];
+    else if (filesDict.profileImage?.[0]) profileFile = filesDict.profileImage[0];
+    else if (filesDict.image?.[0]) profileFile = filesDict.image[0];
+    else if (filesDict.file?.[0]) profileFile = filesDict.file[0];
+
+    if (filesDict.videoFile?.[0]) videoFile = filesDict.videoFile[0];
+    else if (filesDict.video?.[0]) videoFile = filesDict.video[0];
+
+    if (filesDict.videoThumbnail?.[0]) thumbnailFile = filesDict.videoThumbnail[0];
+    else if (filesDict.thumbnail?.[0]) thumbnailFile = filesDict.thumbnail[0];
+  }
+  // Case 2: multer.any() array
+  else if (Array.isArray(req.files)) {
+    const filesArr = req.files as Express.Multer.File[];
+    profileFile = filesArr.find((f) =>
+      ["profileFile", "profileImage", "image", "file", "profileImageUrl"].includes(f.fieldname)
+    );
+    videoFile = filesArr.find((f) => ["videoFile", "video"].includes(f.fieldname));
+    thumbnailFile = filesArr.find((f) => ["videoThumbnail", "thumbnail"].includes(f.fieldname));
+  }
+  // Case 3: single file on req.file
+  else if ((req as any).file) {
+    const single = (req as any).file as Express.Multer.File;
+    if (["videoFile", "video"].includes(single.fieldname)) {
+      videoFile = single;
+    } else {
+      profileFile = single;
+    }
+  }
+
+  return { profileFile, videoFile, thumbnailFile };
+};
+
+// Format file path to public URL path
+const resolveUploadedUrlPath = (file: Express.Multer.File): string => {
+  // If stored under public/static/... return /static/...
+  const normalizedPath = file.path.replace(/\\/g, "/");
+  if (normalizedPath.includes("public/static/")) {
+    const parts = normalizedPath.split("public/static/");
+    return `/static/${parts[1]}`;
+  }
+  if (normalizedPath.includes("uploads/")) {
+    const parts = normalizedPath.split("uploads/");
+    return `/uploads/${parts[1]}`;
+  }
+  return `/static/img/testimonials/${file.filename}`;
+};
+
+// ==========================================
+// 1. CREATE TESTIMONIAL (Admin Only)
+// ==========================================
 export const createTestimonial = async (req: Request, res: Response): Promise<Response> => {
   try {
-    const { name, description, designation, isActive, profileImageUrl, videoUrl } = normalizeFields(req.body);
-    const files = (req as any).files as Express.Multer.File[] | undefined;
-    let profileImageFile: Express.Multer.File | undefined;
-    let videoFile: Express.Multer.File | undefined;
-    
-    if (files && files.length > 0) {
-      profileImageFile = files.find(f => f.fieldname === 'profileImageUrl' || f.fieldname === 'image' || f.fieldname === 'profileImage');
-      videoFile = files.find(f => f.fieldname === 'videoUrl' || f.fieldname === 'video');
-      
-      if (!profileImageFile && !videoFile) {
-        profileImageFile = files[0];
-        if (files.length > 1) videoFile = files[1];
-      }
-    } else if ((req as any).file) {
-      const singleFile = (req as any).file as Express.Multer.File;
-      if (singleFile.fieldname === 'videoUrl' || singleFile.fieldname === 'video') {
-        videoFile = singleFile;
-      } else {
-        profileImageFile = singleFile;
-      }
-    }
+    const fields = normalizeFields(req.body);
+    const { profileFile, videoFile, thumbnailFile } = extractFiles(req);
 
-    if (!name ) {
-      return sendErrorResponse(res, 400, "name and testimonial are required");
+    if (!fields.name) {
+      return sendErrorResponse(res, 400, "Client name is required");
+    }
+    if (!fields.description) {
+      return sendErrorResponse(res, 400, "Testimonial quote/description is required");
     }
 
     const baseUrl = buildBaseUrl(req);
-    const uploadedRelativeImage = profileImageFile ? path.posix.join("/uploads/testimonials", profileImageFile.filename) : undefined;
-    const finalProfileImageUrl = ensureFullUrl(uploadedRelativeImage, baseUrl) || profileImageUrl;
-    
-    const uploadedRelativeVideo = videoFile ? path.posix.join("/uploads/testimonials", videoFile.filename) : undefined;
-    const finalVideoUrl = ensureFullUrl(uploadedRelativeVideo, baseUrl) || videoUrl;
 
-    const doc = new Testimonial({ name, description, profileImageUrl: finalProfileImageUrl, videoUrl: finalVideoUrl, designation, isActive });
+    // Profile Image URL
+    let finalProfileImageUrl = fields.profileImageUrl;
+    if (profileFile) {
+      finalProfileImageUrl = ensureFullUrl(resolveUploadedUrlPath(profileFile), baseUrl);
+    } else if (finalProfileImageUrl) {
+      finalProfileImageUrl = ensureFullUrl(finalProfileImageUrl, baseUrl);
+    } else {
+      finalProfileImageUrl = ensureFullUrl("/static/img/profile-img.png", baseUrl);
+    }
+
+    // Video URL
+    let finalVideoUrl = fields.videoUrl || "";
+    if (videoFile) {
+      finalVideoUrl = ensureFullUrl(resolveUploadedUrlPath(videoFile), baseUrl) || "";
+    } else if (finalVideoUrl) {
+      finalVideoUrl = ensureFullUrl(finalVideoUrl, baseUrl) || "";
+    }
+
+    // Video Thumbnail
+    let finalVideoThumbnail = fields.videoThumbnail || "";
+    if (thumbnailFile) {
+      finalVideoThumbnail = ensureFullUrl(resolveUploadedUrlPath(thumbnailFile), baseUrl) || "";
+    } else if (finalVideoThumbnail) {
+      finalVideoThumbnail = ensureFullUrl(finalVideoThumbnail, baseUrl) || "";
+    }
+
+    // If a video file or videoUrl is supplied, auto-mark isVideo to true if not explicitly false
+    const isVideo = fields.isVideo !== undefined ? fields.isVideo : Boolean(finalVideoUrl);
+
+    const doc = new Testimonial({
+      name: fields.name,
+      designation: fields.designation || "",
+      description: fields.description,
+      profileImageUrl: finalProfileImageUrl,
+      rating: fields.rating !== undefined ? fields.rating : 5,
+      isVideo,
+      videoUrl: finalVideoUrl,
+      videoThumbnail: finalVideoThumbnail,
+      videoDuration: fields.videoDuration || "",
+      isFeatured: fields.isFeatured !== undefined ? fields.isFeatured : false,
+      orderIndex: fields.orderIndex !== undefined ? fields.orderIndex : 0,
+      status: fields.status || (fields.isActive === false ? "inactive" : "active"),
+      isActive: fields.isActive !== undefined ? fields.isActive : fields.status !== "inactive",
+    });
     await doc.save();
 
-    return sendSuccessResponse(res, doc, "Testimonial created successfully");
+    return res.status(201).json({
+      success: true,
+      status: true,
+      message: "Testimonial created successfully",
+      data: doc,
+    });
   } catch (error: any) {
     console.error("createTestimonial error:", error?.message || error);
-    return sendErrorResponse(res, 500, "Internal server error");
+    return sendErrorResponse(res, 500, error?.message || "Internal server error");
   }
 };
 
-// List testimonials with pagination/search/sort
+// ==========================================
+// 2. GET TESTIMONIALS LIST (Public & Admin)
+// ==========================================
 export const getTestimonials = async (req: Request, res: Response): Promise<Response> => {
   try {
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 8;
-    const sortOrder = (req.query.sortOrder as string) === "asc" ? 1 : -1;
-    const search = (req.query.search as string) || "";
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.max(1, Number(req.query.limit) || 8);
+    const sortOrder = (req.query.sortOrder as string)?.toLowerCase() === "asc" ? 1 : -1;
+    const search = ((req.query.search as string) || "").trim();
 
     const filter: any = {};
-    if (search.trim()) {
-      const regex = new RegExp(search.trim(), "i");
+
+    // Filter by isVideo if specified
+    if (req.query.isVideo !== undefined) {
+      const isVideoVal = String(req.query.isVideo).toLowerCase();
+      if (isVideoVal === "true" || isVideoVal === "1") {
+        filter.isVideo = true;
+      } else if (isVideoVal === "false" || isVideoVal === "0") {
+        filter.isVideo = false;
+      }
+    }
+
+    // Filter by status if specified (e.g., status=active)
+    if (req.query.status) {
+      filter.status = req.query.status;
+    }
+
+    // Full-text / Regex search
+    if (search) {
+      const regex = new RegExp(search, "i");
       filter.$or = [
         { name: regex },
-        { description: regex },
         { designation: regex },
-        { testimonial: regex },
+        { description: regex },
       ];
     }
 
@@ -173,7 +279,7 @@ export const getTestimonials = async (req: Request, res: Response): Promise<Resp
 
     const [items, totalItems] = await Promise.all([
       Testimonial.find(filter)
-        .sort({ createdAt: sortOrder })
+        .sort({ orderIndex: 1, createdAt: sortOrder })
         .skip(skip)
         .limit(limit),
       Testimonial.countDocuments(filter),
@@ -181,177 +287,170 @@ export const getTestimonials = async (req: Request, res: Response): Promise<Resp
 
     const totalPages = Math.ceil(totalItems / limit) || 1;
 
-    return sendSuccessResponse(
-      res,
-      {
-        testimonials: items,
+    return res.status(200).json({
+      success: true,
+      status: true,
+      message: "Testimonials fetched successfully",
+      data: items,
+      pagination: {
+        total: totalItems,
         totalTestimonials: totalItems,
+        page,
+        limit,
         totalPages,
         currentPage: page,
         hasNextPage: page < totalPages,
         hasPrevPage: page > 1,
       },
-      "Testimonials fetched successfully"
-    );
+      // Backwards compatibility payload for existing frontend views
+      testimonials: items,
+      totalTestimonials: totalItems,
+      totalPages,
+      currentPage: page,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    });
   } catch (error: any) {
     console.error("getTestimonials error:", error?.message || error);
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
 
-// Update or delete via POST /:id (delete when body is empty)
-export const upsertTestimonial = async (req: Request, res: Response): Promise<Response> => {
+// ==========================================
+// 3. GET SINGLE TESTIMONIAL (Public & Admin)
+// ==========================================
+export const getTestimonialById = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { id } = req.params;
-    const hasBody = req.body && Object.keys(req.body).length > 0;
-
-    const files = (req as any).files as Express.Multer.File[] | undefined;
-    let profileImageFile: Express.Multer.File | undefined;
-    let videoFile: Express.Multer.File | undefined;
-    
-    if (files && files.length > 0) {
-      profileImageFile = files.find(f => f.fieldname === 'profileImageUrl' || f.fieldname === 'image' || f.fieldname === 'profileImage');
-      videoFile = files.find(f => f.fieldname === 'videoUrl' || f.fieldname === 'video');
-      
-      if (!profileImageFile && !videoFile) {
-        profileImageFile = files[0];
-        if (files.length > 1) videoFile = files[1];
-      }
-    } else if ((req as any).file) {
-      const singleFile = (req as any).file as Express.Multer.File;
-      if (singleFile.fieldname === 'videoUrl' || singleFile.fieldname === 'video') {
-        videoFile = singleFile;
-      } else {
-        profileImageFile = singleFile;
-      }
+    const item = await Testimonial.findById(id);
+    if (!item) {
+      return sendErrorResponse(res, 404, "Testimonial not found");
     }
-
-    if (!hasBody && !profileImageFile && !videoFile) {
-      const deleted = await Testimonial.findByIdAndDelete(id);
-      if (!deleted) return sendErrorResponse(res, 404, "Testimonial not found");
-      return sendSuccessResponse(res, { testimonial: deleted }, "Testimonial deleted successfully");
-    }
-
-    const existing: any = await Testimonial.findById(id);
-    if (!existing) return sendErrorResponse(res, 404, "Testimonial not found");
-
-    // Clean up existing profileImageUrl if it has duplicates
-    if (existing.profileImageUrl && existing.profileImageUrl.includes(",")) {
-      const cleanedUrl = ensureFullUrl(existing.profileImageUrl, buildBaseUrl(req));
-      if (cleanedUrl && cleanedUrl !== existing.profileImageUrl) {
-        await Testimonial.findByIdAndUpdate(id, { profileImageUrl: cleanedUrl });
-        existing.profileImageUrl = cleanedUrl;
-      }
-    }
-    
-    // Clean up existing videoUrl if it has duplicates
-    if (existing.videoUrl && existing.videoUrl.includes(",")) {
-      const cleanedUrl = ensureFullUrl(existing.videoUrl, buildBaseUrl(req));
-      if (cleanedUrl && cleanedUrl !== existing.videoUrl) {
-        await Testimonial.findByIdAndUpdate(id, { videoUrl: cleanedUrl });
-        existing.videoUrl = cleanedUrl;
-      }
-    }
-
-    const { name, description, profileImageUrl, videoUrl, designation, testimonial, isActive } = normalizeFields(req.body);
-    const update: any = {};
-    if (name !== undefined) update.name = name;
-    if (description !== undefined) update.description = description;
-    if (designation !== undefined) update.designation = designation;
-    if (isActive !== undefined) update.isActive = isActive;
-
-    const baseUrl = buildBaseUrl(req);
-    
-    // Handle Profile Image Upload
-    if (profileImageFile) {
-      const uploadedRelative = path.posix.join("/uploads/testimonials", profileImageFile.filename);
-      const newFilePath = path.join(process.cwd(), uploadedRelative.replace(/^\/+/, ""));
-      
-      // Check if existing file has the same content
-      let shouldUpdateImage = true;
-      if (existing.profileImageUrl) {
-        let existingPath = existing.profileImageUrl;
-        try {
-          if (existing.profileImageUrl.startsWith("http://") || existing.profileImageUrl.startsWith("https://")) {
-            existingPath = new URL(existing.profileImageUrl).pathname;
-          }
-          if (existingPath.startsWith("/uploads/testimonials")) {
-            const existingFilePath = path.join(process.cwd(), existingPath.replace(/^\/+/, ""));
-            if (areFilesIdentical(newFilePath, existingFilePath)) {
-              // Files are identical, keep existing URL and delete new upload
-              shouldUpdateImage = false;
-              fs.unlinkSync(newFilePath);
-              console.log("Image content unchanged, keeping existing file");
-            }
-          }
-        } catch (_) {
-          // If comparison fails, proceed with update
-        }
-      }
-      
-      if (shouldUpdateImage) {
-        update.profileImageUrl = ensureFullUrl(uploadedRelative, baseUrl);
-        deleteLocalUploadIfExists(existing.profileImageUrl as string | undefined);
-      }
-    } else if (profileImageUrl !== undefined) {
-      // Only update profileImageUrl from body if no file was uploaded
-      update.profileImageUrl = ensureFullUrl(profileImageUrl, baseUrl);
-    }
-    
-    // Handle Video Upload
-    if (videoFile) {
-      const uploadedRelative = path.posix.join("/uploads/testimonials", videoFile.filename);
-      const newFilePath = path.join(process.cwd(), uploadedRelative.replace(/^\/+/, ""));
-      
-      let shouldUpdateVideo = true;
-      if (existing.videoUrl) {
-        let existingPath = existing.videoUrl;
-        try {
-          if (existing.videoUrl.startsWith("http://") || existing.videoUrl.startsWith("https://")) {
-            existingPath = new URL(existing.videoUrl).pathname;
-          }
-          if (existingPath.startsWith("/uploads/testimonials")) {
-            const existingFilePath = path.join(process.cwd(), existingPath.replace(/^\/+/, ""));
-            if (areFilesIdentical(newFilePath, existingFilePath)) {
-              shouldUpdateVideo = false;
-              fs.unlinkSync(newFilePath);
-              console.log("Video content unchanged, keeping existing file");
-            }
-          }
-        } catch (_) {
-        }
-      }
-      
-      if (shouldUpdateVideo) {
-        update.videoUrl = ensureFullUrl(uploadedRelative, baseUrl);
-        deleteLocalUploadIfExists(existing.videoUrl as string | undefined);
-      }
-    } else if (videoUrl !== undefined) {
-      update.videoUrl = ensureFullUrl(videoUrl, baseUrl);
-    }
-    
-    if (req.body.removeVideo === 'true' || req.body.removeVideo === true) {
-      update.videoUrl = "";
-      deleteLocalUploadIfExists(existing.videoUrl as string | undefined);
-    }
-
-    const updated = await Testimonial.findByIdAndUpdate(id, update, { new: true, runValidators: true });
-    if (!updated) return sendErrorResponse(res, 404, "Testimonial not found");
-
-    return sendSuccessResponse(res, updated, "Testimonial updated successfully");
+    return sendSuccessResponse(res, item, "Testimonial fetched successfully");
   } catch (error: any) {
-    console.error("upsertTestimonial error:", error?.message || error);
+    console.error("getTestimonialById error:", error?.message || error);
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
 
-// Explicit delete via DELETE /:id
+// ==========================================
+// 4. UPDATE TESTIMONIAL (Admin Only)
+// Handles both PUT /:id and legacy POST /:id (with fallback delete if empty body)
+// ==========================================
+export const upsertTestimonial = async (req: Request, res: Response): Promise<Response> => {
+  try {
+    const { id } = req.params;
+    const hasBody = req.body && Object.keys(req.body).length > 0;
+    const { profileFile, videoFile, thumbnailFile } = extractFiles(req);
+    const hasFiles = Boolean(profileFile || videoFile || thumbnailFile);
+
+    // Support legacy frontend behavior: POST /:id with empty body means DELETE
+    if (req.method === "POST" && !hasBody && !hasFiles) {
+      const deleted = await Testimonial.findByIdAndDelete(id);
+      if (!deleted) return sendErrorResponse(res, 404, "Testimonial not found");
+      deleteLocalUploadIfExists(deleted.profileImageUrl);
+      deleteLocalUploadIfExists(deleted.videoUrl);
+      deleteLocalUploadIfExists(deleted.videoThumbnail);
+      return sendSuccessResponse(res, { testimonial: deleted }, "Testimonial deleted successfully");
+    }
+
+    const existing = await Testimonial.findById(id);
+    if (!existing) {
+      return sendErrorResponse(res, 404, "Testimonial not found");
+    }
+
+    const fields = normalizeFields(req.body);
+    const update: any = {};
+
+    if (fields.name !== undefined) update.name = fields.name;
+    if (fields.designation !== undefined) update.designation = fields.designation;
+    if (fields.description !== undefined) update.description = fields.description;
+    if (fields.rating !== undefined) update.rating = fields.rating;
+    if (fields.isVideo !== undefined) update.isVideo = fields.isVideo;
+    if (fields.videoDuration !== undefined) update.videoDuration = fields.videoDuration;
+    if (fields.isFeatured !== undefined) update.isFeatured = fields.isFeatured;
+    if (fields.orderIndex !== undefined) update.orderIndex = fields.orderIndex;
+    if (fields.status !== undefined) {
+      update.status = fields.status;
+      update.isActive = fields.status === "active";
+    }
+    if (fields.isActive !== undefined) {
+      update.isActive = fields.isActive;
+      if (fields.status === undefined) {
+        update.status = fields.isActive ? "active" : "inactive";
+      }
+    }
+
+    const baseUrl = buildBaseUrl(req);
+
+    // Profile Image update
+    if (profileFile) {
+      const newUrl = ensureFullUrl(resolveUploadedUrlPath(profileFile), baseUrl);
+      update.profileImageUrl = newUrl;
+      deleteLocalUploadIfExists(existing.profileImageUrl);
+    } else if (fields.profileImageUrl !== undefined) {
+      update.profileImageUrl = ensureFullUrl(fields.profileImageUrl, baseUrl);
+    }
+
+    // Video File update
+    if (videoFile) {
+      const newVideoUrl = ensureFullUrl(resolveUploadedUrlPath(videoFile), baseUrl);
+      update.videoUrl = newVideoUrl;
+      update.isVideo = true;
+      deleteLocalUploadIfExists(existing.videoUrl);
+    } else if (fields.videoUrl !== undefined) {
+      update.videoUrl = ensureFullUrl(fields.videoUrl, baseUrl);
+      if (fields.isVideo === undefined && fields.videoUrl) {
+        update.isVideo = true;
+      }
+    }
+
+    // Video Thumbnail update
+    if (thumbnailFile) {
+      const newThumbnailUrl = ensureFullUrl(resolveUploadedUrlPath(thumbnailFile), baseUrl);
+      update.videoThumbnail = newThumbnailUrl;
+      deleteLocalUploadIfExists(existing.videoThumbnail);
+    } else if (fields.videoThumbnail !== undefined) {
+      update.videoThumbnail = ensureFullUrl(fields.videoThumbnail, baseUrl);
+    }
+
+    const updated = await Testimonial.findByIdAndUpdate(id, update, {
+      new: true,
+      runValidators: true,
+    });
+
+    return res.status(200).json({
+      success: true,
+      status: true,
+      message: "Testimonial updated successfully",
+      data: updated,
+    });
+  } catch (error: any) {
+    console.error("upsertTestimonial error:", error?.message || error);
+    return sendErrorResponse(res, 500, error?.message || "Internal server error");
+  }
+};
+
+// ==========================================
+// 5. DELETE TESTIMONIAL (Admin Only)
+// ==========================================
 export const deleteTestimonial = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { id } = req.params;
     const deleted = await Testimonial.findByIdAndDelete(id);
-    if (!deleted) return sendErrorResponse(res, 404, "Testimonial not found");
-    return sendSuccessResponse(res, { testimonial: deleted }, "Testimonial deleted successfully");
+    if (!deleted) {
+      return sendErrorResponse(res, 404, "Testimonial not found");
+    }
+
+    deleteLocalUploadIfExists(deleted.profileImageUrl);
+    deleteLocalUploadIfExists(deleted.videoUrl);
+    deleteLocalUploadIfExists(deleted.videoThumbnail);
+
+    return res.status(200).json({
+      success: true,
+      status: true,
+      message: "Testimonial deleted successfully",
+    });
   } catch (error: any) {
     console.error("deleteTestimonial error:", error?.message || error);
     return sendErrorResponse(res, 500, "Internal server error");

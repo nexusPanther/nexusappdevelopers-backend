@@ -34,6 +34,9 @@ route.use("/api/admin/landing/about-sections", AboutRoutes);
 route.use("/api/admin/about-sections", AboutRoutes);
 route.use("/api/admin/faq", FaqRoutes);
 route.use("/api/admin/testimonials", TestimonialRoutes);
+// Testimonial routes mounted at /api/testimonials and /api/v1/testimonials as per specification
+route.use("/api/testimonials", TestimonialRoutes);
+route.use("/api/v1/testimonials", TestimonialRoutes);
 route.use("/api/services", ServiceRoutes);
 route.use("/api/portfolio", PortfolioRoutes);
 route.use("/api/legal", LegalRoutes);
