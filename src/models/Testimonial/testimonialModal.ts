@@ -17,6 +17,11 @@ const TestimonialSchema = new mongoose.Schema(
       required: false,
       trim: true,
     },
+    videoUrl: {
+      type: String,
+      required: false,
+      trim: true,
+    },
     designation: {
       type: String,
       required: false,

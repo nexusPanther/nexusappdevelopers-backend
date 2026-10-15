@@ -31,8 +31,9 @@ const validateContact = [
 
 const router = express.Router();
 
-// Public: contact us
+// Public: contact us (supports /add and /create)
 router.post("/add", validateContact as any, addContact as any);
+router.post("/create", validateContact as any, addContact as any);
 
 // Optional: admin listing of contacts
 router.get("/get", getContacts as any);

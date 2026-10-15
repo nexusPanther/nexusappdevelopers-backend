@@ -97,6 +97,7 @@ const normalizeFields = (body: any) => {
     name: clean(body.name),
     description: clean(body.description),
     profileImageUrl: clean(body.profileImageUrl),
+    videoUrl: clean(body.videoUrl),
     designation: clean(body.designation),
     testimonial: clean(body.testimonial),
     isActive: bool(body.isActive),
@@ -106,19 +107,40 @@ const normalizeFields = (body: any) => {
 // Create testimonial
 export const createTestimonial = async (req: Request, res: Response): Promise<Response> => {
   try {
-    const { name, description, designation, isActive } = normalizeFields(req.body);
-    const file = ((req as any).file as Express.Multer.File | undefined) ||
-      (((req as any).files as Express.Multer.File[] | undefined)?.[0]);
+    const { name, description, designation, isActive, profileImageUrl, videoUrl } = normalizeFields(req.body);
+    const files = (req as any).files as Express.Multer.File[] | undefined;
+    let profileImageFile: Express.Multer.File | undefined;
+    let videoFile: Express.Multer.File | undefined;
+    
+    if (files && files.length > 0) {
+      profileImageFile = files.find(f => f.fieldname === 'profileImageUrl' || f.fieldname === 'image' || f.fieldname === 'profileImage');
+      videoFile = files.find(f => f.fieldname === 'videoUrl' || f.fieldname === 'video');
+      
+      if (!profileImageFile && !videoFile) {
+        profileImageFile = files[0];
+        if (files.length > 1) videoFile = files[1];
+      }
+    } else if ((req as any).file) {
+      const singleFile = (req as any).file as Express.Multer.File;
+      if (singleFile.fieldname === 'videoUrl' || singleFile.fieldname === 'video') {
+        videoFile = singleFile;
+      } else {
+        profileImageFile = singleFile;
+      }
+    }
 
     if (!name ) {
       return sendErrorResponse(res, 400, "name and testimonial are required");
     }
 
     const baseUrl = buildBaseUrl(req);
-    const uploadedRelative = file ? path.posix.join("/uploads/testimonials", file.filename) : undefined;
-    const finalProfileImageUrl = ensureFullUrl(uploadedRelative, baseUrl);
+    const uploadedRelativeImage = profileImageFile ? path.posix.join("/uploads/testimonials", profileImageFile.filename) : undefined;
+    const finalProfileImageUrl = ensureFullUrl(uploadedRelativeImage, baseUrl) || profileImageUrl;
+    
+    const uploadedRelativeVideo = videoFile ? path.posix.join("/uploads/testimonials", videoFile.filename) : undefined;
+    const finalVideoUrl = ensureFullUrl(uploadedRelativeVideo, baseUrl) || videoUrl;
 
-    const doc = new Testimonial({ name, description, profileImageUrl: finalProfileImageUrl, designation, isActive });
+    const doc = new Testimonial({ name, description, profileImageUrl: finalProfileImageUrl, videoUrl: finalVideoUrl, designation, isActive });
     await doc.save();
 
     return sendSuccessResponse(res, doc, "Testimonial created successfully");
@@ -183,16 +205,34 @@ export const upsertTestimonial = async (req: Request, res: Response): Promise<Re
     const { id } = req.params;
     const hasBody = req.body && Object.keys(req.body).length > 0;
 
-    const file = ((req as any).file as Express.Multer.File | undefined) ||
-      (((req as any).files as Express.Multer.File[] | undefined)?.[0]);
+    const files = (req as any).files as Express.Multer.File[] | undefined;
+    let profileImageFile: Express.Multer.File | undefined;
+    let videoFile: Express.Multer.File | undefined;
+    
+    if (files && files.length > 0) {
+      profileImageFile = files.find(f => f.fieldname === 'profileImageUrl' || f.fieldname === 'image' || f.fieldname === 'profileImage');
+      videoFile = files.find(f => f.fieldname === 'videoUrl' || f.fieldname === 'video');
+      
+      if (!profileImageFile && !videoFile) {
+        profileImageFile = files[0];
+        if (files.length > 1) videoFile = files[1];
+      }
+    } else if ((req as any).file) {
+      const singleFile = (req as any).file as Express.Multer.File;
+      if (singleFile.fieldname === 'videoUrl' || singleFile.fieldname === 'video') {
+        videoFile = singleFile;
+      } else {
+        profileImageFile = singleFile;
+      }
+    }
 
-    if (!hasBody) {
+    if (!hasBody && !profileImageFile && !videoFile) {
       const deleted = await Testimonial.findByIdAndDelete(id);
       if (!deleted) return sendErrorResponse(res, 404, "Testimonial not found");
       return sendSuccessResponse(res, { testimonial: deleted }, "Testimonial deleted successfully");
     }
 
-    const existing = await Testimonial.findById(id);
+    const existing: any = await Testimonial.findById(id);
     if (!existing) return sendErrorResponse(res, 404, "Testimonial not found");
 
     // Clean up existing profileImageUrl if it has duplicates
@@ -203,8 +243,17 @@ export const upsertTestimonial = async (req: Request, res: Response): Promise<Re
         existing.profileImageUrl = cleanedUrl;
       }
     }
+    
+    // Clean up existing videoUrl if it has duplicates
+    if (existing.videoUrl && existing.videoUrl.includes(",")) {
+      const cleanedUrl = ensureFullUrl(existing.videoUrl, buildBaseUrl(req));
+      if (cleanedUrl && cleanedUrl !== existing.videoUrl) {
+        await Testimonial.findByIdAndUpdate(id, { videoUrl: cleanedUrl });
+        existing.videoUrl = cleanedUrl;
+      }
+    }
 
-    const { name, description, profileImageUrl, designation, testimonial, isActive } = normalizeFields(req.body);
+    const { name, description, profileImageUrl, videoUrl, designation, testimonial, isActive } = normalizeFields(req.body);
     const update: any = {};
     if (name !== undefined) update.name = name;
     if (description !== undefined) update.description = description;
@@ -212,8 +261,10 @@ export const upsertTestimonial = async (req: Request, res: Response): Promise<Re
     if (isActive !== undefined) update.isActive = isActive;
 
     const baseUrl = buildBaseUrl(req);
-    if (file) {
-      const uploadedRelative = path.posix.join("/uploads/testimonials", file.filename);
+    
+    // Handle Profile Image Upload
+    if (profileImageFile) {
+      const uploadedRelative = path.posix.join("/uploads/testimonials", profileImageFile.filename);
       const newFilePath = path.join(process.cwd(), uploadedRelative.replace(/^\/+/, ""));
       
       // Check if existing file has the same content
@@ -245,6 +296,43 @@ export const upsertTestimonial = async (req: Request, res: Response): Promise<Re
     } else if (profileImageUrl !== undefined) {
       // Only update profileImageUrl from body if no file was uploaded
       update.profileImageUrl = ensureFullUrl(profileImageUrl, baseUrl);
+    }
+    
+    // Handle Video Upload
+    if (videoFile) {
+      const uploadedRelative = path.posix.join("/uploads/testimonials", videoFile.filename);
+      const newFilePath = path.join(process.cwd(), uploadedRelative.replace(/^\/+/, ""));
+      
+      let shouldUpdateVideo = true;
+      if (existing.videoUrl) {
+        let existingPath = existing.videoUrl;
+        try {
+          if (existing.videoUrl.startsWith("http://") || existing.videoUrl.startsWith("https://")) {
+            existingPath = new URL(existing.videoUrl).pathname;
+          }
+          if (existingPath.startsWith("/uploads/testimonials")) {
+            const existingFilePath = path.join(process.cwd(), existingPath.replace(/^\/+/, ""));
+            if (areFilesIdentical(newFilePath, existingFilePath)) {
+              shouldUpdateVideo = false;
+              fs.unlinkSync(newFilePath);
+              console.log("Video content unchanged, keeping existing file");
+            }
+          }
+        } catch (_) {
+        }
+      }
+      
+      if (shouldUpdateVideo) {
+        update.videoUrl = ensureFullUrl(uploadedRelative, baseUrl);
+        deleteLocalUploadIfExists(existing.videoUrl as string | undefined);
+      }
+    } else if (videoUrl !== undefined) {
+      update.videoUrl = ensureFullUrl(videoUrl, baseUrl);
+    }
+    
+    if (req.body.removeVideo === 'true' || req.body.removeVideo === true) {
+      update.videoUrl = "";
+      deleteLocalUploadIfExists(existing.videoUrl as string | undefined);
     }
 
     const updated = await Testimonial.findByIdAndUpdate(id, update, { new: true, runValidators: true });

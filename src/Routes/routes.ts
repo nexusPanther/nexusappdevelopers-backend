@@ -16,6 +16,7 @@ import StandOutRoutes from "./aboutRoutes/standOut";
 import LegalRoutes from "../Routes/legal/legal";
 import DashboardRoutes from "./dashboard/dashboard";
 import BlogRoutes from "./blog/blog";
+import PopupRoutes from "./popupRoutes/popup";
 
 const route: Application = express();
 route.use("/api/auth", Authroutes);
@@ -38,6 +39,9 @@ route.use("/api/portfolio", PortfolioRoutes);
 route.use("/api/legal", LegalRoutes);
 route.use("/api/admin/dashboard", DashboardRoutes);
 route.use("/api/blog", BlogRoutes);
-
+route.use("/api/popups", PopupRoutes);
+route.use("/api/admin/popups", PopupRoutes);
+route.use("/api/v1/popups", PopupRoutes);
+route.use("/api/v1/admin/popups", PopupRoutes);
 
 export default route;
