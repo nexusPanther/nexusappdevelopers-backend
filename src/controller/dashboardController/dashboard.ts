@@ -3,6 +3,7 @@ import { Service } from "../../models/Service/serviceModal";
 import { Testimonial } from "../../models/Testimonial/testimonialModal";
 import { Contact } from "../../models/ContactModal/contactModal";
 import { sendErrorResponse, sendSuccessResponse } from "../../utils/responseFun";
+import { getOrSetCache } from "../../Database/redis";
 
 const monthLabel = (date: Date) =>
   date.toLocaleString("en-US", { month: "short" });
@@ -37,53 +38,60 @@ const mapSeries = (
 
 export const getDashboardStats = async (_req: Request, res: Response): Promise<Response> => {
   try {
-    const buckets = buildLastNMonths(6);
-    const startWindow = buckets[0].start;
+    const { data: stats, isCached } = await getOrSetCache(
+      "cache:dashboard:stats",
+      async () => {
+        const buckets = buildLastNMonths(6);
+        const startWindow = buckets[0].start;
 
-    const [servicesCount, testimonialsCount, contactsCount, projectAgg, contactAgg] = await Promise.all([
-      Service.countDocuments(),
-      Testimonial.countDocuments(),
-      Contact.countDocuments(),
-      Service.aggregate([
-        { $match: { createdAt: { $gte: startWindow } } },
-        {
-          $group: {
-            _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
-            count: { $sum: 1 },
+        const [servicesCount, testimonialsCount, contactsCount, projectAgg, contactAgg] = await Promise.all([
+          Service.countDocuments(),
+          Testimonial.countDocuments(),
+          Contact.countDocuments(),
+          Service.aggregate([
+            { $match: { createdAt: { $gte: startWindow } } },
+            {
+              $group: {
+                _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
+                count: { $sum: 1 },
+              },
+            },
+          ]),
+          Contact.aggregate([
+            { $match: { createdAt: { $gte: startWindow } } },
+            {
+              $group: {
+                _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
+                count: { $sum: 1 },
+              },
+            },
+          ]),
+        ]);
+
+        const projectSeries = mapSeries(buckets, projectAgg as any);
+        const contactSeries = mapSeries(buckets, contactAgg as any);
+
+        return {
+          summary: {
+            services: servicesCount,
+            testimonials: testimonialsCount,
+            projects: servicesCount, // using services as projects count
+            contacts: contactsCount,
           },
-        },
-      ]),
-      Contact.aggregate([
-        { $match: { createdAt: { $gte: startWindow } } },
-        {
-          $group: {
-            _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
-            count: { $sum: 1 },
+          charts: {
+            labels: buckets.map((b) => b.label),
+            projects: projectSeries,
+            contacts: contactSeries,
           },
-        },
-      ]),
-    ]);
-
-    const projectSeries = mapSeries(buckets, projectAgg as any);
-    const contactSeries = mapSeries(buckets, contactAgg as any);
-
-    return sendSuccessResponse(
-      res,
-      {
-        summary: {
-          services: servicesCount,
-          testimonials: testimonialsCount,
-          projects: servicesCount, // using services as projects count
-          contacts: contactsCount,
-        },
-        charts: {
-          labels: buckets.map((b) => b.label),
-          projects: projectSeries,
-          contacts: contactSeries,
-        },
+        };
       },
-      "Dashboard stats fetched"
+      3600
     );
+
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
+
+    return sendSuccessResponse(res, stats, "Dashboard stats fetched");
   } catch (error: any) {
     console.error("getDashboardStats error:", error?.message || error);
     return sendErrorResponse(res, 500, "Internal server error");

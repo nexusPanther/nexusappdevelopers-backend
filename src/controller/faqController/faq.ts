@@ -4,6 +4,7 @@ import {
   sendErrorResponse,
   sendSuccessResponse,
 } from "../../utils/responseFun";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
 
 // Create FAQ
 export const createFaq = async (req: Request, res: Response): Promise<Response> => {
@@ -15,6 +16,7 @@ export const createFaq = async (req: Request, res: Response): Promise<Response> 
 
     const faq = new Faq({ question, answer, category });
     await faq.save();
+    await invalidateCache("cache:faqs:*", "cache:dashboard:*");
 
     return sendSuccessResponse(res, faq, "FAQ created successfully");
   } catch (error: any) {
@@ -31,32 +33,45 @@ export const getFaqs = async (req: Request, res: Response): Promise<Response> =>
     const sortOrder = (req.query.sortOrder as string) === "asc" ? 1 : -1;
     const search = (req.query.search as string) || "";
 
-    const filter: any = {};
-    if (search.trim()) {
-      const regex = new RegExp(search.trim(), "i");
-      filter.$or = [{ question: regex }, { answer: regex }, { category: regex }];
-    }
+    const cacheKey = `cache:faqs:${page}:${limit}:${sortOrder}:${search.trim()}`;
 
-    const skip = (page - 1) * limit;
+    const { data: result, isCached } = await getOrSetCache(
+      cacheKey,
+      async () => {
+        const filter: any = {};
+        if (search.trim()) {
+          const regex = new RegExp(search.trim(), "i");
+          filter.$or = [{ question: regex }, { answer: regex }, { category: regex }];
+        }
 
-    const [faqs, totalFaqs] = await Promise.all([
-      Faq.find(filter)
-        .sort({ createdAt: sortOrder })
-        .skip(skip)
-        .limit(limit),
-      Faq.countDocuments(filter),
-    ]);
+        const skip = (page - 1) * limit;
 
-    const totalPages = Math.ceil(totalFaqs / limit) || 1;
+        const [faqs, totalFaqs] = await Promise.all([
+          Faq.find(filter)
+            .sort({ createdAt: sortOrder })
+            .skip(skip)
+            .limit(limit),
+          Faq.countDocuments(filter),
+        ]);
 
-    return sendSuccessResponse(res, {
-      faqs,
-      totalFaqs,
-      totalPages,
-      currentPage: page,
-      hasNextPage: page < totalPages,
-      hasPrevPage: page > 1,
-    }, "FAQs fetched successfully");
+        const totalPages = Math.ceil(totalFaqs / limit) || 1;
+
+        return {
+          faqs,
+          totalFaqs,
+          totalPages,
+          currentPage: page,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        };
+      },
+      86400
+    );
+
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
+
+    return sendSuccessResponse(res, result, "FAQs fetched successfully");
   } catch (error: any) {
     console.error("getFaqs error:", error?.message || error);
     return sendErrorResponse(res, 500, "Internal server error");
@@ -73,6 +88,7 @@ export const upsertFaq = async (req: Request, res: Response): Promise<Response> 
     if (!hasBody) {
       const deleted = await Faq.findByIdAndDelete(id);
       if (!deleted) return sendErrorResponse(res, 404, "FAQ not found");
+      await invalidateCache("cache:faqs:*", "cache:dashboard:*");
       return sendSuccessResponse(res, { faq: deleted }, "FAQ deleted successfully");
     }
 
@@ -85,6 +101,7 @@ export const upsertFaq = async (req: Request, res: Response): Promise<Response> 
     const updated = await Faq.findByIdAndUpdate(id, update, { new: true, runValidators: true });
     if (!updated) return sendErrorResponse(res, 404, "FAQ not found");
 
+    await invalidateCache("cache:faqs:*", "cache:dashboard:*");
     return sendSuccessResponse(res, updated, "FAQ updated successfully");
   } catch (error: any) {
     console.error("upsertFaq error:", error?.message || error);
@@ -98,6 +115,7 @@ export const deleteFaq = async (req: Request, res: Response): Promise<Response> 
     const { id } = req.params;
     const deleted = await Faq.findByIdAndDelete(id);
     if (!deleted) return sendErrorResponse(res, 404, "FAQ not found");
+    await invalidateCache("cache:faqs:*", "cache:dashboard:*");
     return sendSuccessResponse(res, { faq: deleted }, "FAQ deleted successfully");
   } catch (error: any) {
     console.error("deleteFaq error:", error?.message || error);

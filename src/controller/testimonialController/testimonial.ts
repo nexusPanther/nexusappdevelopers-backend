@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { Testimonial } from "../../models/Testimonial/testimonialModal";
 import { sendErrorResponse, sendSuccessResponse } from "../../utils/responseFun";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
 
 const buildBaseUrl = (req: Request): string => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
@@ -229,6 +230,7 @@ export const createTestimonial = async (req: Request, res: Response): Promise<Re
       isActive: fields.isActive !== undefined ? fields.isActive : fields.status !== "inactive",
     });
     await doc.save();
+    await invalidateCache("cache:testimonials:*", "cache:dashboard:*");
 
     return res.status(201).json({
       success: true,
@@ -252,68 +254,79 @@ export const getTestimonials = async (req: Request, res: Response): Promise<Resp
     const sortOrder = (req.query.sortOrder as string)?.toLowerCase() === "asc" ? 1 : -1;
     const search = ((req.query.search as string) || "").trim();
 
-    const filter: any = {};
+    const cacheKey = `cache:testimonials:${page}:${limit}:${sortOrder}:${search}:${req.query.isVideo ?? ""}:${req.query.status ?? ""}`;
+    const { data: cachedPayload, isCached } = await getOrSetCache(
+      cacheKey,
+      async () => {
+        const filter: any = {};
 
-    // Filter by isVideo if specified
-    if (req.query.isVideo !== undefined) {
-      const isVideoVal = String(req.query.isVideo).toLowerCase();
-      if (isVideoVal === "true" || isVideoVal === "1") {
-        filter.isVideo = true;
-      } else if (isVideoVal === "false" || isVideoVal === "0") {
-        filter.isVideo = false;
-      }
-    }
+        // Filter by isVideo if specified
+        if (req.query.isVideo !== undefined) {
+          const isVideoVal = String(req.query.isVideo).toLowerCase();
+          if (isVideoVal === "true" || isVideoVal === "1") {
+            filter.isVideo = true;
+          } else if (isVideoVal === "false" || isVideoVal === "0") {
+            filter.isVideo = false;
+          }
+        }
 
-    // Filter by status if specified (e.g., status=active)
-    if (req.query.status) {
-      filter.status = req.query.status;
-    }
+        // Filter by status if specified (e.g., status=active)
+        if (req.query.status) {
+          filter.status = req.query.status;
+        }
 
-    // Full-text / Regex search
-    if (search) {
-      const regex = new RegExp(search, "i");
-      filter.$or = [
-        { name: regex },
-        { designation: regex },
-        { description: regex },
-      ];
-    }
+        // Full-text / Regex search
+        if (search) {
+          const regex = new RegExp(search, "i");
+          filter.$or = [
+            { name: regex },
+            { designation: regex },
+            { description: regex },
+          ];
+        }
 
-    const skip = (page - 1) * limit;
+        const skip = (page - 1) * limit;
 
-    const [items, totalItems] = await Promise.all([
-      Testimonial.find(filter)
-        .sort({ orderIndex: 1, createdAt: sortOrder })
-        .skip(skip)
-        .limit(limit),
-      Testimonial.countDocuments(filter),
-    ]);
+        const [items, totalItems] = await Promise.all([
+          Testimonial.find(filter)
+            .sort({ orderIndex: 1, createdAt: sortOrder })
+            .skip(skip)
+            .limit(limit),
+          Testimonial.countDocuments(filter),
+        ]);
 
-    const totalPages = Math.ceil(totalItems / limit) || 1;
+        const totalPages = Math.ceil(totalItems / limit) || 1;
 
-    return res.status(200).json({
-      success: true,
-      status: true,
-      message: "Testimonials fetched successfully",
-      data: items,
-      pagination: {
-        total: totalItems,
-        totalTestimonials: totalItems,
-        page,
-        limit,
-        totalPages,
-        currentPage: page,
-        hasNextPage: page < totalPages,
-        hasPrevPage: page > 1,
+        return {
+          success: true,
+          status: true,
+          message: "Testimonials fetched successfully",
+          data: items,
+          pagination: {
+            total: totalItems,
+            totalTestimonials: totalItems,
+            page,
+            limit,
+            totalPages,
+            currentPage: page,
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1,
+          },
+          testimonials: items,
+          totalTestimonials: totalItems,
+          totalPages,
+          currentPage: page,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        };
       },
-      // Backwards compatibility payload for existing frontend views
-      testimonials: items,
-      totalTestimonials: totalItems,
-      totalPages,
-      currentPage: page,
-      hasNextPage: page < totalPages,
-      hasPrevPage: page > 1,
-    });
+      86400
+    );
+
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
+
+    return res.status(200).json(cachedPayload);
   } catch (error: any) {
     console.error("getTestimonials error:", error?.message || error);
     return sendErrorResponse(res, 500, "Internal server error");
@@ -326,10 +339,16 @@ export const getTestimonials = async (req: Request, res: Response): Promise<Resp
 export const getTestimonialById = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { id } = req.params;
-    const item = await Testimonial.findById(id);
+    const { data: item, isCached } = await getOrSetCache(
+      `cache:testimonials:id:${id}`,
+      () => Testimonial.findById(id),
+      86400
+    );
     if (!item) {
       return sendErrorResponse(res, 404, "Testimonial not found");
     }
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, item, "Testimonial fetched successfully");
   } catch (error: any) {
     console.error("getTestimonialById error:", error?.message || error);
@@ -355,6 +374,7 @@ export const upsertTestimonial = async (req: Request, res: Response): Promise<Re
       deleteLocalUploadIfExists(deleted.profileImageUrl);
       deleteLocalUploadIfExists(deleted.videoUrl);
       deleteLocalUploadIfExists(deleted.videoThumbnail);
+      await invalidateCache("cache:testimonials:*", "cache:dashboard:*");
       return sendSuccessResponse(res, { testimonial: deleted }, "Testimonial deleted successfully");
     }
 
@@ -436,6 +456,7 @@ export const upsertTestimonial = async (req: Request, res: Response): Promise<Re
       new: true,
       runValidators: true,
     });
+    await invalidateCache("cache:testimonials:*", "cache:dashboard:*");
 
     return res.status(200).json({
       success: true,
@@ -463,6 +484,7 @@ export const deleteTestimonial = async (req: Request, res: Response): Promise<Re
     deleteLocalUploadIfExists(deleted.profileImageUrl);
     deleteLocalUploadIfExists(deleted.videoUrl);
     deleteLocalUploadIfExists(deleted.videoThumbnail);
+    await invalidateCache("cache:testimonials:*", "cache:dashboard:*");
 
     return res.status(200).json({
       success: true,

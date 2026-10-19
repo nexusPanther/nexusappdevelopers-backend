@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { AboutHero } from "../../models/About/aboutHeroModal";
 import { sendErrorResponse, sendSuccessResponse, sendSuccessWithoutResponse } from "../../utils/responseFun";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
 
 const buildBaseUrl = (req: Request) => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
@@ -70,6 +71,8 @@ export const createAboutHero = async (req: Request, res: Response): Promise<Resp
 
     const doc = new AboutHero({ heading, highlightedHeading, paragraph, image: finalImage, isActive });
     await doc.save();
+    await invalidateCache("cache:about:*");
+
     return sendSuccessResponse(res, doc, "About hero section created successfully");
   } catch (error: any) {
     console.error("createAboutHero error:", error?.message || error);
@@ -80,7 +83,13 @@ export const createAboutHero = async (req: Request, res: Response): Promise<Resp
 // Read all
 export const getAboutHeroSections = async (_req: Request, res: Response): Promise<Response> => {
   try {
-    const sections = await AboutHero.find().sort({ createdAt: -1 });
+    const { data: sections, isCached } = await getOrSetCache(
+      "cache:about:hero:all",
+      () => AboutHero.find().sort({ createdAt: -1 }),
+      86400
+    );
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, sections, "About hero sections fetched");
   } catch (error: any) {
     console.error("getAboutHeroSections error:", error?.message || error);
@@ -92,8 +101,14 @@ export const getAboutHeroSections = async (_req: Request, res: Response): Promis
 export const getAboutHeroById = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { id } = req.params;
-    const section = await AboutHero.findById(id);
+    const { data: section, isCached } = await getOrSetCache(
+      `cache:about:hero:id:${id}`,
+      () => AboutHero.findById(id),
+      86400
+    );
     if (!section) return sendErrorResponse(res, 404, "About hero section not found");
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, section, "About hero section fetched");
   } catch (error: any) {
     console.error("getAboutHeroById error:", error?.message || error);
@@ -128,6 +143,7 @@ export const updateAboutHero = async (req: Request, res: Response): Promise<Resp
     }
 
     const updated = await AboutHero.findByIdAndUpdate(id, update, { new: true, runValidators: true });
+    await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, updated, "About hero section updated");
   } catch (error: any) {
     console.error("updateAboutHero error:", error?.message || error);
@@ -142,6 +158,7 @@ export const deleteAboutHero = async (req: Request, res: Response): Promise<Resp
     const deleted = await AboutHero.findByIdAndDelete(id);
     if (!deleted) return sendErrorResponse(res, 404, "About hero section not found");
     deleteLocalUploadIfExists((deleted as any).image as string | undefined);
+    await invalidateCache("cache:about:*");
     return sendSuccessWithoutResponse(res, "About hero section deleted successfully");
   } catch (error: any) {
     console.error("deleteAboutHero error:", error?.message || error);
@@ -158,6 +175,7 @@ export const toggleAboutHeroStatus = async (req: Request, res: Response): Promis
     if (!section) return sendErrorResponse(res, 404, "About hero section not found");
     section.isActive = Boolean(isActive);
     await section.save();
+    await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, section, "About hero section status updated");
   } catch (error: any) {
     console.error("toggleAboutHeroStatus error:", error?.message || error);
