@@ -17,8 +17,14 @@ import LegalRoutes from "../Routes/legal/legal";
 import DashboardRoutes from "./dashboard/dashboard";
 import BlogRoutes from "./blog/blog";
 import PopupRoutes from "./popupRoutes/popup";
+import MetaTagRoutes from "./metaTagRoutes/metaTag";
+import CacheRoutes from "./cacheRoutes/cacheRoutes";
 
 const route: Application = express();
+route.use("/api/meta-tags", MetaTagRoutes);
+route.use("/api/admin/meta-tags", MetaTagRoutes);
+route.use("/api/admin/cache", CacheRoutes);
+route.use("/api/cache", CacheRoutes);
 route.use("/api/auth", Authroutes);
 route.use("/api/contact", ContactRoutes);
 route.use("/api/hero", HeroRoutes);

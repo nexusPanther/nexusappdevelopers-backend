@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { FestivePopup, NormalPopup } from "../../models/PopupModal/popupModal";
 import { sendErrorResponse, sendSuccessResponse } from "../../utils/responseFun";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
 
 /**
  * 1. Get Live Status of all popups (Public & Admin)
@@ -8,18 +9,29 @@ import { sendErrorResponse, sendSuccessResponse } from "../../utils/responseFun"
  */
 export const getPopupStatus = async (req: Request, res: Response): Promise<Response> => {
   try {
-    const [festive, normal] = await Promise.all([
-      FestivePopup.findOne(),
-      NormalPopup.findOne(),
-    ]);
+    const { data: statusData, isCached } = await getOrSetCache(
+      "cache:popups:status",
+      async () => {
+        const [festive, normal] = await Promise.all([
+          FestivePopup.findOne(),
+          NormalPopup.findOne(),
+        ]);
+
+        return {
+          normalEnabled: normal ? normal.isEnabled : true,
+          festiveEnabled: festive ? festive.isEnabled : false,
+          animationType: festive ? festive.animationType : "snow",
+        };
+      },
+      86400
+    );
+
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
 
     return res.status(200).json({
       success: true,
-      data: {
-        normalEnabled: normal ? normal.isEnabled : true,
-        festiveEnabled: festive ? festive.isEnabled : false,
-        animationType: festive ? festive.animationType : "snow",
-      },
+      data: statusData,
     });
   } catch (error: any) {
     console.error("getPopupStatus error:", error?.message || error);
@@ -43,6 +55,7 @@ export const updatePopupStatus = async (req: Request, res: Response): Promise<Re
         { isEnabled: isBool },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
+      await invalidateCache("cache:popups:*");
       return res.status(200).json({
         success: true,
         message: `Festive popup status successfully updated to ${isBool ? "enabled" : "paused"}`,
@@ -58,6 +71,7 @@ export const updatePopupStatus = async (req: Request, res: Response): Promise<Re
         { isEnabled: isBool },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
+      await invalidateCache("cache:popups:*");
       return res.status(200).json({
         success: true,
         message: `Normal exit-intent popup status successfully updated to ${isBool ? "enabled" : "paused"}`,
@@ -81,10 +95,20 @@ export const updatePopupStatus = async (req: Request, res: Response): Promise<Re
  */
 export const getFestivePopupContent = async (req: Request, res: Response): Promise<Response> => {
   try {
-    let festive = await FestivePopup.findOne();
-    if (!festive) {
-      festive = await FestivePopup.create({});
-    }
+    const { data: festive, isCached } = await getOrSetCache(
+      "cache:popups:festive",
+      async () => {
+        let doc = await FestivePopup.findOne();
+        if (!doc) {
+          doc = await FestivePopup.create({});
+        }
+        return doc;
+      },
+      86400
+    );
+
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
 
     return res.status(200).json({
       success: true,
@@ -102,7 +126,6 @@ export const getFestivePopupContent = async (req: Request, res: Response): Promi
 export const updateFestivePopupContent = async (req: Request, res: Response): Promise<Response> => {
   try {
     const updateData = { ...req.body };
-    // Remove mongo immutable or auto-managed properties if sent
     delete updateData._id;
     delete updateData.__v;
     delete updateData.createdAt;
@@ -113,6 +136,7 @@ export const updateFestivePopupContent = async (req: Request, res: Response): Pr
       { $set: updateData },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
+    await invalidateCache("cache:popups:*");
 
     return res.status(200).json({
       success: true,
@@ -132,6 +156,7 @@ export const resetFestivePopupContent = async (req: Request, res: Response): Pro
   try {
     await FestivePopup.deleteMany({});
     const defaultDoc = await FestivePopup.create({});
+    await invalidateCache("cache:popups:*");
 
     return res.status(200).json({
       success: true,

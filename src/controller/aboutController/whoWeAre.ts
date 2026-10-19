@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { WhoWeAre } from "../../models/About/whoWeAreModal";
 import { sendErrorResponse, sendSuccessResponse, sendSuccessWithoutResponse } from "../../utils/responseFun";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
 
 const cleanString = (val: any) => {
   if (val === undefined || val === null) return undefined;
@@ -52,6 +53,8 @@ export const createWhoWeAre = async (req: Request, res: Response): Promise<Respo
 
     const doc = new WhoWeAre({ title, paragraph, stats, isActive });
     await doc.save();
+    await invalidateCache("cache:about:*");
+
     return sendSuccessResponse(res, doc, "Who We Are section created successfully");
   } catch (error: any) {
     console.error("createWhoWeAre error:", error?.message || error);
@@ -62,7 +65,13 @@ export const createWhoWeAre = async (req: Request, res: Response): Promise<Respo
 // Read all
 export const getWhoWeAreSections = async (_req: Request, res: Response): Promise<Response> => {
   try {
-    const sections = await WhoWeAre.find().sort({ createdAt: -1 });
+    const { data: sections, isCached } = await getOrSetCache(
+      "cache:about:who-we-are:all",
+      () => WhoWeAre.find().sort({ createdAt: -1 }),
+      86400
+    );
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, sections, "Who We Are sections fetched");
   } catch (error: any) {
     console.error("getWhoWeAreSections error:", error?.message || error);
@@ -74,8 +83,14 @@ export const getWhoWeAreSections = async (_req: Request, res: Response): Promise
 export const getWhoWeAreById = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { id } = req.params;
-    const section = await WhoWeAre.findById(id);
+    const { data: section, isCached } = await getOrSetCache(
+      `cache:about:who-we-are:id:${id}`,
+      () => WhoWeAre.findById(id),
+      86400
+    );
     if (!section) return sendErrorResponse(res, 404, "Who We Are section not found");
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, section, "Who We Are section fetched");
   } catch (error: any) {
     console.error("getWhoWeAreById error:", error?.message || error);
@@ -98,6 +113,7 @@ export const updateWhoWeAre = async (req: Request, res: Response): Promise<Respo
     if (isActive !== undefined) update.isActive = isActive;
 
     const updated = await WhoWeAre.findByIdAndUpdate(id, update, { new: true, runValidators: true });
+    await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, updated, "Who We Are section updated");
   } catch (error: any) {
     console.error("updateWhoWeAre error:", error?.message || error);
@@ -111,6 +127,7 @@ export const deleteWhoWeAre = async (req: Request, res: Response): Promise<Respo
     const { id } = req.params;
     const deleted = await WhoWeAre.findByIdAndDelete(id);
     if (!deleted) return sendErrorResponse(res, 404, "Who We Are section not found");
+    await invalidateCache("cache:about:*");
     return sendSuccessWithoutResponse(res, "Who We Are section deleted successfully");
   } catch (error: any) {
     console.error("deleteWhoWeAre error:", error?.message || error);
@@ -127,6 +144,7 @@ export const toggleWhoWeAreStatus = async (req: Request, res: Response): Promise
     if (!section) return sendErrorResponse(res, 404, "Who We Are section not found");
     section.isActive = Boolean(isActive);
     await section.save();
+    await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, section, "Who We Are section status updated");
   } catch (error: any) {
     console.error("toggleWhoWeAreStatus error:", error?.message || error);

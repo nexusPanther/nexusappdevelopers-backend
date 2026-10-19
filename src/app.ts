@@ -102,8 +102,22 @@ app.use("/api/uploads", express.static(path.join(__dirname, "../uploads"), stati
 app.use("/static", express.static(path.join(__dirname, "../public/static"), staticOptions));
 app.use("/public", express.static(path.join(__dirname, "../public"), staticOptions));
 
+import { initMetaTagsSeed } from "./controller/metaTagController/metaTag";
+import { connectToRedis } from "./Database/redis";
+
+// Redis setup
+connectToRedis().catch((err) => {
+  console.warn("Redis startup note:", err?.message || err);
+});
+
 //MongoDb setup
-connectToDatabase();
+connectToDatabase()
+  .then(() => {
+    initMetaTagsSeed();
+  })
+  .catch((err) => {
+    console.error("Failed to connect to MongoDb:", err);
+  });
 app.use(route);
 const PORT = process.env.PORT || 7000;
 app.listen(PORT, () => {

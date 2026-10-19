@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import { MissionVision } from "../../models/About/missionVisionModal";
 import { sendErrorResponse, sendSuccessResponse, sendSuccessWithoutResponse } from "../../utils/responseFun";
-import console from "console";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
 
 const buildBaseUrl = (req: Request) => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
@@ -85,6 +85,8 @@ export const createMissionVision = async (req: Request, res: Response): Promise<
       isActive,
     });
     await doc.save();
+    await invalidateCache("cache:about:*");
+
     return sendSuccessResponse(res, doc, "Mission/Vision section created successfully");
   } catch (error: any) {
     console.error("createMissionVision error:", error?.message || error);
@@ -95,7 +97,13 @@ export const createMissionVision = async (req: Request, res: Response): Promise<
 // Read all
 export const getMissionVisionSections = async (_req: Request, res: Response): Promise<Response> => {
   try {
-    const sections = await MissionVision.find().sort({ createdAt: -1 });
+    const { data: sections, isCached } = await getOrSetCache(
+      "cache:about:mission-vision:all",
+      () => MissionVision.find().sort({ createdAt: -1 }),
+      86400
+    );
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, sections, "Mission/Vision sections fetched");
   } catch (error: any) {
     console.error("getMissionVisionSections error:", error?.message || error);
@@ -107,8 +115,14 @@ export const getMissionVisionSections = async (_req: Request, res: Response): Pr
 export const getMissionVisionById = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { id } = req.params;
-    const section = await MissionVision.findById(id);
+    const { data: section, isCached } = await getOrSetCache(
+      `cache:about:mission-vision:id:${id}`,
+      () => MissionVision.findById(id),
+      86400
+    );
     if (!section) return sendErrorResponse(res, 404, "Mission/Vision section not found");
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, section, "Mission/Vision section fetched");
   } catch (error: any) {
     console.error("getMissionVisionById error:", error?.message || error);
@@ -148,9 +162,9 @@ export const updateMissionVision = async (req: Request, res: Response): Promise<
     } else if (visionImage !== undefined) {
       update.visionImage = ensureFullUrl(visionImage, baseUrl);
     }
-    // If neither file nor URL is provided for an image, don't include it in update (preserves existing value)
 
     const updated = await MissionVision.findByIdAndUpdate(id, update, { new: true, runValidators: true });
+    await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, updated, "Mission/Vision section updated");
   } catch (error: any) {
     console.error("updateMissionVision error:", error?.message || error);
@@ -166,6 +180,7 @@ export const deleteMissionVision = async (req: Request, res: Response): Promise<
     if (!deleted) return sendErrorResponse(res, 404, "Mission/Vision section not found");
     deleteLocalUploadIfExists((deleted as any).missionImage as string | undefined);
     deleteLocalUploadIfExists((deleted as any).visionImage as string | undefined);
+    await invalidateCache("cache:about:*");
     return sendSuccessWithoutResponse(res, "Mission/Vision section deleted successfully");
   } catch (error: any) {
     console.error("deleteMissionVision error:", error?.message || error);
@@ -182,6 +197,7 @@ export const toggleMissionVisionStatus = async (req: Request, res: Response): Pr
     if (!section) return sendErrorResponse(res, 404, "Mission/Vision section not found");
     section.isActive = Boolean(isActive);
     await section.save();
+    await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, section, "Mission/Vision section status updated");
   } catch (error: any) {
     console.error("toggleMissionVisionStatus error:", error?.message || error);

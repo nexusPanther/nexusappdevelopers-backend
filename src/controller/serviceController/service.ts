@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { Service } from "../../models/Service/serviceModal";
 import { sendErrorResponse, sendSuccessResponse } from "../../utils/responseFun";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
 
 // Helpers
 const buildBaseUrl = (req: Request) => {
@@ -100,6 +101,7 @@ export const createService = async (req: Request, res: Response): Promise<Respon
     const finalMainImage = ensureFullUrl(uploadedMainImage ?? undefined, baseUrl);
     const doc = new Service({ title, description, bulletPoints, tools, image: finalImage, icon: finalIcon, serviceType, mainImage: finalMainImage, higlihlightTitle, slug, metaTitle, metaDescription, metaKeywords });
     await doc.save();
+    await invalidateCache("cache:services:*", "cache:dashboard:*");
     return sendSuccessResponse(res, doc, "Service created successfully");
   } catch (error: any) {
     console.error("createService error:", error?.message || error);
@@ -110,7 +112,13 @@ export const createService = async (req: Request, res: Response): Promise<Respon
 // Get all services
 export const getServices = async (_req: Request, res: Response): Promise<Response> => {
   try {
-    const services = await Service.find().sort({ createdAt: -1 });
+    const { data: services, isCached } = await getOrSetCache(
+      "cache:services:all",
+      () => Service.find().sort({ createdAt: -1 }),
+      86400
+    );
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, services, "Services fetched successfully");
   } catch (error: any) {
     console.error("getServices error:", error?.message || error);
@@ -122,8 +130,14 @@ export const getServices = async (_req: Request, res: Response): Promise<Respons
 export const getServiceById = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { id } = req.params;
-    const service = await Service.findById(id);
+    const { data: service, isCached } = await getOrSetCache(
+      `cache:services:id:${id}`,
+      () => Service.findById(id),
+      86400
+    );
     if (!service) return sendErrorResponse(res, 404, "Service not found");
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, service, "Service fetched successfully");
   } catch (error: any) {
     console.error("getServiceById error:", error?.message || error);
@@ -179,6 +193,7 @@ export const updateService = async (req: Request, res: Response): Promise<Respon
     }
 
     const updated = await Service.findByIdAndUpdate(id, update, { new: true, runValidators: true });
+    await invalidateCache("cache:services:*", "cache:dashboard:*");
     return sendSuccessResponse(res, updated, "Service updated successfully");
   } catch (error: any) {
     console.error("updateService error:", error?.message || error);
@@ -195,6 +210,7 @@ export const deleteService = async (req: Request, res: Response): Promise<Respon
     deleteLocalUploadIfExists((deleted as any).image as string | undefined);
     deleteLocalUploadIfExists((deleted as any).icon as string | undefined);
     deleteLocalUploadIfExists((deleted as any).mainImage as string | undefined);
+    await invalidateCache("cache:services:*", "cache:dashboard:*");
     return sendSuccessResponse(res, { service: deleted }, "Service deleted successfully");
   } catch (error: any) {
     console.error("deleteService error:", error?.message || error);

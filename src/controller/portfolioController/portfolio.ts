@@ -7,6 +7,7 @@ import {
   sendSuccessResponse,
   sendSuccessWithoutResponse,
 } from "../../utils/responseFun";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
 
 const buildBaseUrl = (req: Request) => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
@@ -73,8 +74,16 @@ export const getPortfolioItems = async (
 ): Promise<Response> => {
   try {
     const baseUrl = buildBaseUrl(req);
-    const items = await Portfolio.find().sort({ createdAt: -1 });
-    const mapped = items.map((item) => mapToFullUrls(item, baseUrl));
+    const { data: mapped, isCached } = await getOrSetCache(
+      "cache:portfolio:all",
+      async () => {
+        const items = await Portfolio.find().sort({ createdAt: -1 });
+        return items.map((item) => mapToFullUrls(item, baseUrl));
+      },
+      86400
+    );
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, mapped, "Portfolio items fetched");
   } catch (error: any) {
     console.error("getPortfolioItems error:", error?.message || error);
@@ -90,9 +99,18 @@ export const getPortfolioById = async (
   try {
     const baseUrl = buildBaseUrl(req);
     const { id } = req.params;
-    const item = await Portfolio.findById(id);
-    if (!item) return sendErrorResponse(res, 404, "Portfolio item not found");
-    const mapped = mapToFullUrls(item, baseUrl);
+    const { data: mapped, isCached } = await getOrSetCache(
+      `cache:portfolio:id:${id}`,
+      async () => {
+        const item = await Portfolio.findById(id);
+        if (!item) return null;
+        return mapToFullUrls(item, baseUrl);
+      },
+      86400
+    );
+    if (!mapped) return sendErrorResponse(res, 404, "Portfolio item not found");
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, mapped, "Portfolio item fetched");
   } catch (error: any) {
     console.error("getPortfolioById error:", error?.message || error);
@@ -167,6 +185,7 @@ export const createPortfolio = async (
 
     const doc = new Portfolio(payload);
     await doc.save();
+    await invalidateCache("cache:portfolio:*", "cache:dashboard:*");
 
     const result = mapToFullUrls(doc, baseUrl);
 
@@ -291,6 +310,7 @@ export const updatePortfolio = async (
     if (!updated)
       return sendErrorResponse(res, 404, "Portfolio item not found");
 
+    await invalidateCache("cache:portfolio:*", "cache:dashboard:*");
     const result = mapToFullUrls(updated, baseUrl);
 
     return sendSuccessResponse(res, result, "Portfolio item updated");
@@ -317,6 +337,7 @@ export const deletePortfolio = async (
     deleteLocalUploadIfExists(
       (deleted as any).productImage as string | undefined,
     );
+    await invalidateCache("cache:portfolio:*", "cache:dashboard:*");
     return sendSuccessWithoutResponse(
       res,
       "Portfolio item deleted successfully",

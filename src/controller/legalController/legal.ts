@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { LegalDocument } from "../../models/Legal/legalDocumentModal";
 import { sendErrorResponse, sendSuccessResponse } from "../../utils/responseFun";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
 
 // Fetch a legal document by type
 export const getLegalDocument = async (req: Request, res: Response): Promise<Response> => {
@@ -9,7 +10,16 @@ export const getLegalDocument = async (req: Request, res: Response): Promise<Res
     if (!type || !["terms", "privacy"].includes(type)) {
       return sendErrorResponse(res, 400, "Invalid document type");
     }
-    const doc = await LegalDocument.findOne({ type });
+
+    const { data: doc, isCached } = await getOrSetCache(
+      `cache:legal:${type}`,
+      () => LegalDocument.findOne({ type }),
+      86400
+    );
+
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
+
     if (!doc) return sendSuccessResponse(res, null, "No document found");
     return sendSuccessResponse(res, doc, "Document fetched");
   } catch (error: any) {
@@ -34,6 +44,8 @@ export const createLegalDocument = async (req: Request, res: Response): Promise<
     }
     const doc = new LegalDocument({ type, sections, lastUpdated: new Date() });
     await doc.save();
+    await invalidateCache("cache:legal:*");
+
     return sendSuccessResponse(res, doc, "Document created");
   } catch (error: any) {
     console.error("createLegalDocument error:", error?.message || error);
@@ -56,6 +68,8 @@ export const updateLegalDocument = async (req: Request, res: Response): Promise<
       { new: true, runValidators: true }
     );
     if (!doc) return sendErrorResponse(res, 404, "Document not found");
+
+    await invalidateCache("cache:legal:*");
     return sendSuccessResponse(res, doc, "Document updated");
   } catch (error: any) {
     console.error("updateLegalDocument error:", error?.message || error);

@@ -30,4 +30,6 @@ Thumbs.db
 # Build outputs
 dist/
 build/
-.gitignore
+
+# Lock files
+package-lock.json.gitignore
