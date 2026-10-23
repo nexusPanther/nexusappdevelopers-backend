@@ -52,6 +52,7 @@ const normalizeFields = (body: any) => {
     highlightedHeading: clean(body.highlightedHeading),
     paragraph: clean(body.paragraph),
     image: clean(body.image),
+    videoUrl: body.videoUrl !== undefined && body.videoUrl !== null ? String(body.videoUrl).trim() : undefined,
     isActive: bool(body.isActive),
   };
 };
@@ -61,7 +62,7 @@ export const createAboutHero = async (req: Request, res: Response): Promise<Resp
   try {
     const file = ((req as any).file as Express.Multer.File | undefined) ||
       (((req as any).files as Express.Multer.File[] | undefined)?.[0]);
-    const { heading, highlightedHeading, paragraph, image, isActive } = normalizeFields(req.body);
+    const { heading, highlightedHeading, paragraph, image, videoUrl, isActive } = normalizeFields(req.body);
 
     if (!heading) return sendErrorResponse(res, 400, "heading is required");
 
@@ -69,7 +70,7 @@ export const createAboutHero = async (req: Request, res: Response): Promise<Resp
     const uploadedRelative = file ? path.posix.join("/uploads/aboutHero", file.filename) : undefined;
     const finalImage = ensureFullUrl(uploadedRelative ?? image, baseUrl);
 
-    const doc = new AboutHero({ heading, highlightedHeading, paragraph, image: finalImage, isActive });
+    const doc = new AboutHero({ heading, highlightedHeading, paragraph, image: finalImage, videoUrl: videoUrl || "", isActive });
     await doc.save();
     await invalidateCache("cache:about:*");
 
@@ -125,12 +126,13 @@ export const updateAboutHero = async (req: Request, res: Response): Promise<Resp
 
     const file = ((req as any).file as Express.Multer.File | undefined) ||
       (((req as any).files as Express.Multer.File[] | undefined)?.[0]);
-    const { heading, highlightedHeading, paragraph, image, isActive } = normalizeFields(req.body);
+    const { heading, highlightedHeading, paragraph, image, videoUrl, isActive } = normalizeFields(req.body);
 
     const update: any = {};
     if (heading !== undefined) update.heading = heading;
     if (highlightedHeading !== undefined) update.highlightedHeading = highlightedHeading;
     if (paragraph !== undefined) update.paragraph = paragraph;
+    if (videoUrl !== undefined) update.videoUrl = videoUrl;
     if (isActive !== undefined) update.isActive = isActive;
 
     const baseUrl = buildBaseUrl(req);
