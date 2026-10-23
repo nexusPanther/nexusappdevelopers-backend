@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "main": "app.ts",
   "scripts": {
-    "build": "node api.js && tsc",
-    "start": "node api.js && npx tsc && nodemon node build/app.js"
+    "build": "node init && tsc",
+    "start": "node init && npx tsc && nodemon node build/app.js"
   },
   "keywords": [],
   "author": "",
@@ -41,6 +41,7 @@
     "mongodb": "^6.10.0",
     "mongoose": "^8.7.3",
     "multer": "^2.5.0",
+    "node-fetch": "^3.3.2",
     "nodemailer": "^10.2.1",
     "npm": "^10.8.2",
     "passport": "^0.7.0",
