@@ -20,7 +20,7 @@ export const getToken = async (user: any) => {
     throw new Error("JWT_SECRET is not defined in environment variables.");
   }
   const token = jwt.sign({ identifier: user._id }, process.env.JWT_SECRET, {
-    expiresIn: "90d",
+    expiresIn: "7d",
   });
   return token;
 };

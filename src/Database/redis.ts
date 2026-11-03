@@ -8,7 +8,7 @@ const getRedisConfig = (): RedisOptions => {
     return {
       lazyConnect: true,
       maxRetriesPerRequest: 1,
-      retryStrategy: (times) => {
+      retryStrategy: (times: number) => {
         if (times > 5) return null; // stop retrying after 5 attempts
         return Math.min(times * 200, 2000);
       },
@@ -21,7 +21,7 @@ const getRedisConfig = (): RedisOptions => {
     password: process.env.REDIS_PASSWORD || undefined,
     lazyConnect: true,
     maxRetriesPerRequest: 1,
-    retryStrategy: (times) => {
+    retryStrategy: (times: number) => {
       if (times > 5) return null;
       return Math.min(times * 200, 2000);
     },
@@ -51,7 +51,7 @@ export const connectToRedis = async (): Promise<Redis | null> => {
       isRedisConnected = true;
     });
 
-    redisClient.on("error", (err) => {
+    redisClient.on("error", (err: any) => {
       isRedisConnected = false;
       console.warn("⚠️ Redis connection warning:", err?.message || err);
     });
@@ -279,7 +279,7 @@ export const getRedisStats = async (): Promise<RedisCacheStats> => {
     }
 
     const sampleKeys = allKeys.slice(0, 60);
-    const ttlPromises = sampleKeys.map((k) => redisClient!.ttl(k).catch(() => -1));
+    const ttlPromises = sampleKeys.map((k: string) => redisClient!.ttl(k).catch(() => -1));
     const ttls = await Promise.all(ttlPromises);
 
     const getCat = (k: string) => {
@@ -298,7 +298,7 @@ export const getRedisStats = async (): Promise<RedisCacheStats> => {
       return "General";
     };
 
-    const recentKeys = sampleKeys.map((key, i) => ({
+    const recentKeys = sampleKeys.map((key: string, i: number) => ({
       key,
       ttl: ttls[i],
       category: getCat(key),
@@ -328,6 +328,31 @@ export const getRedisStats = async (): Promise<RedisCacheStats> => {
       categories: defaultCategories,
       recentKeys: [],
     };
+  }
+};
+
+/**
+ * Revoke a JWT token by adding it to Redis blocklist with TTL (default 7 days)
+ */
+export const revokeToken = async (token: string, ttlSeconds: number = 7 * 24 * 60 * 60): Promise<void> => {
+  try {
+    if (!token) return;
+    await redisSet(`revoked_token:${token}`, "1", ttlSeconds);
+  } catch (err: any) {
+    console.warn("revokeToken error:", err?.message || err);
+  }
+};
+
+/**
+ * Check if a JWT token has been revoked
+ */
+export const isTokenRevoked = async (token: string): Promise<boolean> => {
+  try {
+    if (!token) return false;
+    const revoked = await redisGet<string>(`revoked_token:${token}`);
+    return Boolean(revoked);
+  } catch (err: any) {
+    return false;
   }
 };
 
