@@ -20,11 +20,8 @@ const ensureFullUrl = (maybePath: string | undefined, baseUrl: string): string |
 
 const resolveAdminId = (req: Request): string | undefined => {
   const maybeUser: any = (req as any).user;
-  return (
-    maybeUser?.identifier ||
-    maybeUser?._id ||
-    (req.body && (req.body.adminId || req.body.id))
-  );
+  // Source identity exclusively from the verified JWT payload — never from the request body
+  return maybeUser?.identifier || maybeUser?._id;
 };
 
 const removeOldAvatarIfLocal = (avatar?: string) => {

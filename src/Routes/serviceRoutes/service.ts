@@ -2,6 +2,7 @@ import express from "express";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
+import passport from "passport";
 import {
   createService,
   getServices,
@@ -26,14 +27,27 @@ const storage = multer.diskStorage({
   },
 });
 
-// Accept any file field name to avoid Unexpected field errors
-const upload = multer({ storage }).any();
+// Only allow image uploads; enforce 20 MB limit
+const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  const allowedMimes = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"];
+  if (allowedMimes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error("Invalid file type. Only images (JPG, PNG, WebP, GIF, SVG) are allowed."));
+  }
+};
 
-// Routes
+const upload = multer({ storage, fileFilter, limits: { fileSize: 20 * 1024 * 1024 } }).any();
+
+const requireAdmin = passport.authenticate("jwt", { session: false });
+
+// Public read routes
 router.get("/", getServices as any);
 router.get("/:id", getServiceById as any);
-router.post("/", upload, createService as any);
-router.patch("/:id", upload, updateService as any);
-router.delete("/:id", deleteService as any);
+
+// Protected write routes
+router.post("/", requireAdmin, upload, createService as any);
+router.patch("/:id", requireAdmin, upload, updateService as any);
+router.delete("/:id", requireAdmin, deleteService as any);
 
 export default router;

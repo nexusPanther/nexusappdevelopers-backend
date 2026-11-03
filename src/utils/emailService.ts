@@ -3,6 +3,14 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+// Escape HTML special characters to prevent injection into email bodies
+const escHtml = (str: string): string =>
+  String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT) || 587,
@@ -13,7 +21,7 @@ const transporter = nodemailer.createTransport({
     pass: process.env.SMTP_PASS,
   },
   tls: {
-    ciphers: "SSLv3",
+    minVersion: "TLSv1.2",
   },
 });
 
@@ -34,17 +42,17 @@ export const sendEmailToFounders = async (contactDetails: { name: string, email:
   const mailOptions = {
     from: `"Nexus Contact" <${process.env.SMTP_USER}>`,
     to: foundersEmails.join(","),
-    subject: `New Contact Inquiry from ${name}`,
+    subject: `New Contact Inquiry from ${escHtml(name)}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
         <h2 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px;">New Contact Query Received</h2>
-        <p><strong>Name:</strong> ${name}</p>
-        <p><strong>Email:</strong> ${email}</p>
-        <p><strong>Phone:</strong> +${phoneCode.replace(/^\+/, "")} ${phone}</p>
-        <p><strong>Project Type:</strong> ${projectType}</p>
+        <p><strong>Name:</strong> ${escHtml(name)}</p>
+        <p><strong>Email:</strong> ${escHtml(email)}</p>
+        <p><strong>Phone:</strong> +${escHtml(phoneCode.replace(/^\+/, ""))} ${escHtml(phone)}</p>
+        <p><strong>Project Type:</strong> ${escHtml(projectType)}</p>
         <div style="background: #f9f9f9; padding: 15px; border-radius: 5px; margin-top: 15px;">
           <h4 style="margin-top: 0; color: #555;">Message:</h4>
-          <p style="white-space: pre-wrap; color: #444;">${message}</p>
+          <p style="white-space: pre-wrap; color: #444;">${escHtml(message)}</p>
         </div>
         <p style="margin-top: 20px; font-size: 12px; color: #888;">This is an automated notification from your website.</p>
       </div>
@@ -59,14 +67,15 @@ export const sendEmailToFounders = async (contactDetails: { name: string, email:
 };
 
 export const sendThankYouEmail = async (userEmail: string, userName: string) => {
+  const safeName = escHtml(userName || "");
   const mailOptions = {
     from: `"Nexus Team" <${process.env.SMTP_USER}>`,
     to: userEmail,
-    subject: `Thank you for contacting us, ${userName}!`,
+    subject: `Thank you for contacting us, ${safeName}!`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
         <h2 style="color: #007bff;">Thank You for Reaching Out!</h2>
-        <p>Hi ${userName},</p>
+        <p>Hi ${safeName},</p>
         <p>We have successfully received your inquiry. Our team is currently reviewing your request and will get back to you as soon as possible.</p>
         <p>If you have any urgent questions, feel free to reply directly to this email.</p>
         <br/>
