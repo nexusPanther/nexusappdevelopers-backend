@@ -40,7 +40,9 @@ export const getFaqs = async (req: Request, res: Response): Promise<Response> =>
       async () => {
         const filter: any = {};
         if (search.trim()) {
-          const regex = new RegExp(search.trim(), "i");
+          // Escape special regex chars to prevent ReDoS
+          const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const regex = new RegExp(escaped, "i");
           filter.$or = [{ question: regex }, { answer: regex }, { category: regex }];
         }
 

@@ -90,12 +90,13 @@ export const getAllMetaTags = async (req: Request, res: Response): Promise<Respo
     const filter: any = {};
     if (isSearching) {
       const q = (search as string).trim();
+      const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       filter.$or = [
-        { route: { $regex: q, $options: "i" } },
-        { title: { $regex: q, $options: "i" } },
-        { description: { $regex: q, $options: "i" } },
-        { focusKeyword: { $regex: q, $options: "i" } },
-        { pageTitle: { $regex: q, $options: "i" } },
+        { route: { $regex: escaped, $options: "i" } },
+        { title: { $regex: escaped, $options: "i" } },
+        { description: { $regex: escaped, $options: "i" } },
+        { focusKeyword: { $regex: escaped, $options: "i" } },
+        { pageTitle: { $regex: escaped, $options: "i" } },
       ];
     }
 
@@ -232,7 +233,7 @@ export const createOrUpdateMetaTag = async (req: Request, res: Response): Promis
           {
             $or: [
               { slug },
-              { title: new RegExp(`^${slug.replace(/-/g, " ")}$`, "i") },
+              { title: new RegExp(`^${slug.replace(/-/g, " ").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") },
             ],
           },
           {
@@ -315,7 +316,7 @@ export const updateMetaTagById = async (req: Request, res: Response): Promise<Re
           {
             $or: [
               { slug },
-              { title: new RegExp(`^${slug.replace(/-/g, " ")}$`, "i") },
+              { title: new RegExp(`^${slug.replace(/-/g, " ").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") },
             ],
           },
           {
