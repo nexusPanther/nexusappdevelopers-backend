@@ -277,7 +277,9 @@ export const getTestimonials = async (req: Request, res: Response): Promise<Resp
 
         // Full-text / Regex search
         if (search) {
-          const regex = new RegExp(search, "i");
+          // Escape special regex chars to prevent ReDoS
+          const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const regex = new RegExp(escaped, "i");
           filter.$or = [
             { name: regex },
             { designation: regex },

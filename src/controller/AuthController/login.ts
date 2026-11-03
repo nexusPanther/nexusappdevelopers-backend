@@ -30,11 +30,13 @@ const Login = async (req: Request, res: Response): Promise<Response> => {
 
     const admin = await Admin.findOne({ email });
     if (!admin) {
+      console.warn(`[AUTH] Login failure (user not found): ${email} from ${req.ip} at ${new Date().toISOString()}`);
       return sendErrorResponse(res, 404, "User not found");
     }
 
     const isMatch = await bcrypt.compare(password, (admin as any).password);
     if (!isMatch) {
+      console.warn(`[AUTH] Login failure (wrong password): ${email} from ${req.ip} at ${new Date().toISOString()}`);
       return sendErrorResponse(res, 400, "Invalid credentials");
     }
 
@@ -58,6 +60,7 @@ const Login = async (req: Request, res: Response): Promise<Response> => {
       path: "/",
     });
 
+    console.info(`[AUTH] Login success: ${admin.email} from ${req.ip} at ${new Date().toISOString()}`);
     return sendSuccessResponse(res, { user: payload, token }, "Login successful");
   } catch (error: any) {
     console.error("Login error:", error?.message || error);

@@ -27,7 +27,19 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({ storage }).any();
+const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  const allowed = [
+    "image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml",
+    "video/mp4", "video/webm", "video/quicktime",
+  ];
+  if (allowed.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error("Invalid file type. Only images and videos are supported."));
+  }
+};
+
+const upload = multer({ storage, fileFilter, limits: { fileSize: 50 * 1024 * 1024 } }).any();
 
 // Public read
 router.get("/", getMissionVisionSections as any);
