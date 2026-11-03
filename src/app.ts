@@ -19,7 +19,21 @@ const app: Application = express();
 app.disable('x-powered-by');
 app.use(cookieParser());
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc:  ["'self'"],
+      styleSrc:   ["'self'", "'unsafe-inline'"],
+      imgSrc:     ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      frameSrc:   ["'none'"],
+      objectSrc:  ["'none'"],
+    },
+  },
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+  frameguard:     { action: "deny" },
 }));
 
 const allowedOrigins = [
@@ -57,8 +71,24 @@ const loginLimiter = rateLimit({
   message: { error: 'Too many login attempts, please try again later.' }
 });
 
+// Contact form: 5 submissions/hour per IP (each triggers 2 emails)
+const contactLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: { error: 'Too many contact submissions, please try again later.' }
+});
+// Signup: prevent account enumeration / spam
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many signup attempts, please try again later.' }
+});
+
 app.use('/api/', apiLimiter);
 app.use('/api/auth/login', loginLimiter);
+app.use('/api/auth/signup', signupLimiter);
+app.use('/api/contact/add', contactLimiter);
+app.use('/api/contact/create', contactLimiter);
 
 const cookieExtractor = (req: express.Request): string | null => {
   if (req && req.cookies && req.cookies.nexus_session) {
@@ -73,11 +103,16 @@ const opts: StrategyOptions = {
     ExtractJwt.fromAuthHeaderAsBearerToken()
   ]),
   secretOrKey: process.env.JWT_SECRET as string, // Ensure JWT_SECRET is defined in your environment variables
+  passReqToCallback: true,
 };
 
 passport.use(
-  new JwtStrategy(opts, async (jwt_payload: JwtPayload, done) => {
+  new JwtStrategy(opts, async (req: express.Request, jwt_payload: JwtPayload, done: any) => {
     try {
+      const rawToken = cookieExtractor(req) || ExtractJwt.fromAuthHeaderAsBearerToken()(req);
+      if (rawToken && (await isTokenRevoked(rawToken))) {
+        return done(null, false);
+      }
       let AdminUser:AdminResponse | null = await Admin.findOne({ _id: jwt_payload.identifier });
       if (AdminUser) {
         return done(null, AdminUser);
@@ -90,8 +125,8 @@ passport.use(
     }
   })
 );
-app.use(express.json({ limit: "100mb" }));
-app.use(express.urlencoded({ limit: "100mb", extended: true }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 // Static files for uploads & assets with HTTP caching headers
 const staticOptions = {
   maxAge: "7d",
@@ -103,7 +138,7 @@ app.use("/static", express.static(path.join(__dirname, "../public/static"), stat
 app.use("/public", express.static(path.join(__dirname, "../public"), staticOptions));
 
 import { initMetaTagsSeed } from "./controller/metaTagController/metaTag";
-import { connectToRedis } from "./Database/redis";
+import { connectToRedis, isTokenRevoked } from "./Database/redis";
 
 // Redis setup
 connectToRedis().catch((err) => {
@@ -119,8 +154,22 @@ connectToDatabase()
     console.error("Failed to connect to MongoDb:", err);
   });
 app.use(route);
+
+// 404 handler — catches all unmatched routes
+app.use((_req: express.Request, res: express.Response) => {
+  res.status(404).json({ success: false, status: false, message: "Not found" });
+});
+
+// Global error handler — catches unhandled errors and multer errors
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error("Unhandled error:", err?.message || err);
+  const status = err?.status || err?.statusCode || 500;
+  const isProd = process.env.NODE_ENV === "production";
+  const message = (status >= 500 && isProd) ? "Internal server error" : (err?.message || "Internal server error");
+  res.status(status).json({ success: false, status: false, message });
+});
+
 const PORT = process.env.PORT || 7000;
 app.listen(PORT, () => {
-  console.log("server has started on port");
-  console.log("http://localhost:" + PORT);
+  console.info(`Server started on port ${PORT}`);
 });
