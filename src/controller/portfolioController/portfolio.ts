@@ -8,6 +8,7 @@ import {
   sendSuccessWithoutResponse,
 } from "../../utils/responseFun";
 import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 const buildBaseUrl = (req: Request) => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
@@ -39,9 +40,9 @@ const deleteLocalUploadIfExists = (url?: string) => {
     const abs = path.join(process.cwd(), pathname.replace(/^\/+/, ""));
     if (fs.existsSync(abs)) fs.unlinkSync(abs);
   } catch (err) {
-    console.error(
-      "deleteLocalUploadIfExists error:",
-      (err as any)?.message || err,
+    logger.error(
+      { err: (err as any)?.message || err },
+      "deleteLocalUploadIfExists error",
     );
   }
 };
@@ -86,7 +87,7 @@ export const getPortfolioItems = async (
     else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, mapped, "Portfolio items fetched");
   } catch (error: any) {
-    console.error("getPortfolioItems error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getPortfolioItems error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -113,7 +114,7 @@ export const getPortfolioById = async (
     else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, mapped, "Portfolio item fetched");
   } catch (error: any) {
-    console.error("getPortfolioById error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getPortfolioById error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -191,7 +192,7 @@ export const createPortfolio = async (
 
     return sendSuccessResponse(res, result, "Portfolio item created");
   } catch (error: any) {
-    console.error("createPortfolio error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "createPortfolio error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -315,7 +316,7 @@ export const updatePortfolio = async (
 
     return sendSuccessResponse(res, result, "Portfolio item updated");
   } catch (error: any) {
-    console.error("updatePortfolio error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updatePortfolio error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -343,7 +344,7 @@ export const deletePortfolio = async (
       "Portfolio item deleted successfully",
     );
   } catch (error: any) {
-    console.error("deletePortfolio error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deletePortfolio error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

@@ -14,6 +14,7 @@ import { Blog } from "../../models/Blog/blogModal";
 import { FestivePopup, NormalPopup } from "../../models/PopupModal/popupModal";
 import { MetaTag } from "../../models/MetaTag/metaTagModal";
 import { DEFAULT_META_TAGS } from "../metaTagController/defaultMetaTags";
+import logger from "../../utils/logger";
 
 /**
  * GET /api/admin/cache/stats
@@ -24,7 +25,7 @@ export const getStats = async (_req: Request, res: Response): Promise<Response> 
     const stats = await getRedisStats();
     return sendSuccessResponse(res, stats, "Redis cache stats fetched");
   } catch (error: any) {
-    console.error("getStats error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getStats error");
     return sendErrorResponse(res, 500, "Failed to retrieve Redis statistics");
   }
 };
@@ -119,7 +120,7 @@ export const clearCache = async (req: Request, res: Response): Promise<Response>
         : `Cache for "${t}" cleared successfully!`
     );
   } catch (error: any) {
-    console.error("clearCache error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "clearCache error");
     return sendErrorResponse(res, 500, "Failed to clear Redis cache");
   }
 };
@@ -183,7 +184,7 @@ export const warmupCache = async (_req: Request, res: Response): Promise<Respons
       `Cache successfully warmed up with ${warmedCount} critical modules!`
     );
   } catch (error: any) {
-    console.error("warmupCache error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "warmupCache error");
     return sendErrorResponse(res, 500, "Failed to warm up cache");
   }
 };

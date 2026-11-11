@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { LegalDocument } from "../../models/Legal/legalDocumentModal";
 import { sendErrorResponse, sendSuccessResponse } from "../../utils/responseFun";
 import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 // Fetch a legal document by type
 export const getLegalDocument = async (req: Request, res: Response): Promise<Response> => {
@@ -23,7 +24,7 @@ export const getLegalDocument = async (req: Request, res: Response): Promise<Res
     if (!doc) return sendSuccessResponse(res, null, "No document found");
     return sendSuccessResponse(res, doc, "Document fetched");
   } catch (error: any) {
-    console.error("getLegalDocument error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getLegalDocument error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -48,7 +49,7 @@ export const createLegalDocument = async (req: Request, res: Response): Promise<
 
     return sendSuccessResponse(res, doc, "Document created");
   } catch (error: any) {
-    console.error("createLegalDocument error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "createLegalDocument error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -72,7 +73,7 @@ export const updateLegalDocument = async (req: Request, res: Response): Promise<
     await invalidateCache("cache:legal:*");
     return sendSuccessResponse(res, doc, "Document updated");
   } catch (error: any) {
-    console.error("updateLegalDocument error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updateLegalDocument error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

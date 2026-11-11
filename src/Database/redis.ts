@@ -1,4 +1,5 @@
 import Redis, { RedisOptions } from "ioredis";
+import logger from "../utils/logger";
 
 let redisClient: Redis | null = null;
 let isRedisConnected = false;
@@ -44,7 +45,7 @@ export const connectToRedis = async (): Promise<Redis | null> => {
 
     redisClient.on("connect", () => {
       isRedisConnected = true;
-      console.log("⚡ Connected to Redis successfully!");
+      logger.info("⚡ Connected to Redis successfully!");
     });
 
     redisClient.on("ready", () => {
@@ -53,7 +54,7 @@ export const connectToRedis = async (): Promise<Redis | null> => {
 
     redisClient.on("error", (err) => {
       isRedisConnected = false;
-      console.warn("⚠️ Redis connection warning:", err?.message || err);
+      logger.warn({ err: err?.message || err }, "⚠️ Redis connection warning");
     });
 
     redisClient.on("close", () => {
@@ -63,7 +64,7 @@ export const connectToRedis = async (): Promise<Redis | null> => {
     await redisClient.connect();
     return redisClient;
   } catch (error: any) {
-    console.warn("⚠️ Redis initialization error (falling back to database):", error?.message || error);
+    logger.warn({ err: error?.message || error }, "⚠️ Redis initialization error (falling back to database)");
     isRedisConnected = false;
     return null;
   }
@@ -86,7 +87,7 @@ export const redisGet = async <T = any>(key: string): Promise<T | null> => {
     if (!data) return null;
     return JSON.parse(data) as T;
   } catch (err: any) {
-    console.warn(`Redis GET failed for key "${key}":`, err?.message || err);
+    logger.warn({ err: err?.message || err, key }, `Redis GET failed for key "${key}"`);
     return null;
   }
 };
@@ -109,7 +110,7 @@ export const redisSet = async (
     }
     return true;
   } catch (err: any) {
-    console.warn(`Redis SET failed for key "${key}":`, err?.message || err);
+    logger.warn({ err: err?.message || err, key }, `Redis SET failed for key "${key}"`);
     return false;
   }
 };
@@ -123,7 +124,7 @@ export const redisDel = async (...keys: string[]): Promise<boolean> => {
     await redisClient.del(...keys);
     return true;
   } catch (err: any) {
-    console.warn(`Redis DEL failed:`, err?.message || err);
+    logger.warn({ err: err?.message || err }, "Redis DEL failed");
     return false;
   }
 };
@@ -140,7 +141,7 @@ export const redisDelByPattern = async (pattern: string): Promise<number> => {
     }
     return 0;
   } catch (err: any) {
-    console.warn(`Redis DEL by pattern "${pattern}" failed:`, err?.message || err);
+    logger.warn({ err: err?.message || err, pattern }, `Redis DEL by pattern "${pattern}" failed`);
     return 0;
   }
 };
@@ -177,7 +178,7 @@ export const invalidateCache = async (...patternsOrKeys: string[]): Promise<void
       }
     }
   } catch (err: any) {
-    console.warn("invalidateCache error:", err?.message || err);
+    logger.warn({ err: err?.message || err }, "invalidateCache error");
   }
 };
 
@@ -190,7 +191,7 @@ export const flushAllCache = async (): Promise<boolean> => {
     await redisClient.flushdb();
     return true;
   } catch (err: any) {
-    console.warn("Redis flushdb failed:", err?.message || err);
+    logger.warn({ err: err?.message || err }, "Redis flushdb failed");
     return false;
   }
 };
@@ -316,7 +317,7 @@ export const getRedisStats = async (): Promise<RedisCacheStats> => {
       recentKeys,
     };
   } catch (err: any) {
-    console.warn("getRedisStats error:", err?.message || err);
+    logger.warn({ err: err?.message || err }, "getRedisStats error");
     return {
       isConnected: isRedisReady(),
       status: "error",

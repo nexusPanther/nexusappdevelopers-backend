@@ -4,6 +4,7 @@ import fs from "fs";
 import { Testimonial } from "../../models/Testimonial/testimonialModal";
 import { sendErrorResponse, sendSuccessResponse } from "../../utils/responseFun";
 import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 const buildBaseUrl = (req: Request): string => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
@@ -66,7 +67,7 @@ const deleteLocalUploadIfExists = (url?: string) => {
       fs.unlinkSync(absPublic);
     }
   } catch (err) {
-    console.error("deleteLocalUploadIfExists error:", (err as any)?.message || err);
+    logger.error({ err: (err as any)?.message || err }, "deleteLocalUploadIfExists error");
   }
 };
 
@@ -239,7 +240,7 @@ export const createTestimonial = async (req: Request, res: Response): Promise<Re
       data: doc,
     });
   } catch (error: any) {
-    console.error("createTestimonial error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "createTestimonial error");
     return sendErrorResponse(res, 500, error?.message || "Internal server error");
   }
 };
@@ -328,7 +329,7 @@ export const getTestimonials = async (req: Request, res: Response): Promise<Resp
 
     return res.status(200).json(cachedPayload);
   } catch (error: any) {
-    console.error("getTestimonials error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getTestimonials error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -351,7 +352,7 @@ export const getTestimonialById = async (req: Request, res: Response): Promise<R
     else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, item, "Testimonial fetched successfully");
   } catch (error: any) {
-    console.error("getTestimonialById error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getTestimonialById error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -465,7 +466,7 @@ export const upsertTestimonial = async (req: Request, res: Response): Promise<Re
       data: updated,
     });
   } catch (error: any) {
-    console.error("upsertTestimonial error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "upsertTestimonial error");
     return sendErrorResponse(res, 500, error?.message || "Internal server error");
   }
 };
@@ -492,7 +493,7 @@ export const deleteTestimonial = async (req: Request, res: Response): Promise<Re
       message: "Testimonial deleted successfully",
     });
   } catch (error: any) {
-    console.error("deleteTestimonial error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deleteTestimonial error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

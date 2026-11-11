@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { FestivePopup, NormalPopup } from "../../models/PopupModal/popupModal";
 import { sendErrorResponse, sendSuccessResponse } from "../../utils/responseFun";
 import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 /**
  * 1. Get Live Status of all popups (Public & Admin)
@@ -34,7 +35,7 @@ export const getPopupStatus = async (req: Request, res: Response): Promise<Respo
       data: statusData,
     });
   } catch (error: any) {
-    console.error("getPopupStatus error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getPopupStatus error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -85,7 +86,7 @@ export const updatePopupStatus = async (req: Request, res: Response): Promise<Re
       return sendErrorResponse(res, 400, "Invalid popup type. Must be 'festive' or 'normal'");
     }
   } catch (error: any) {
-    console.error("updatePopupStatus error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updatePopupStatus error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -115,7 +116,7 @@ export const getFestivePopupContent = async (req: Request, res: Response): Promi
       data: festive,
     });
   } catch (error: any) {
-    console.error("getFestivePopupContent error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getFestivePopupContent error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -144,7 +145,7 @@ export const updateFestivePopupContent = async (req: Request, res: Response): Pr
       data: updated,
     });
   } catch (error: any) {
-    console.error("updateFestivePopupContent error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updateFestivePopupContent error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -164,7 +165,7 @@ export const resetFestivePopupContent = async (req: Request, res: Response): Pro
       data: defaultDoc,
     });
   } catch (error: any) {
-    console.error("resetFestivePopupContent error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "resetFestivePopupContent error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

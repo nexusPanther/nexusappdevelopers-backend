@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 import { Admin } from "../../models/AdminModal/AdminModal";
 import { sendErrorResponse, sendSuccessResponse } from "../../utils/responseFun";
+import logger from "../../utils/logger";
 
 const buildBaseUrl = (req: Request) => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
@@ -35,7 +36,7 @@ const removeOldAvatarIfLocal = (avatar?: string) => {
     const absolute = path.join(process.cwd(), normalized);
     if (fs.existsSync(absolute)) fs.unlinkSync(absolute);
   } catch (err) {
-    console.error("removeOldAvatarIfLocal error:", (err as any)?.message || err);
+    logger.error({ err: (err as any)?.message || err }, "removeOldAvatarIfLocal error");
   }
 };
 
@@ -81,7 +82,7 @@ export const updateAdminProfile = async (req: Request, res: Response): Promise<R
 
     return sendSuccessResponse(res, payload, "Profile updated successfully");
   } catch (error: any) {
-    console.error("updateAdminProfile error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updateAdminProfile error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -107,7 +108,7 @@ export const changeAdminPassword = async (req: Request, res: Response): Promise<
 
     return sendSuccessResponse(res, { id: admin._id }, "Password changed successfully");
   } catch (error: any) {
-    console.error("changeAdminPassword error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "changeAdminPassword error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

@@ -4,6 +4,7 @@ import fs from "fs";
 import { Service } from "../../models/Service/serviceModal";
 import { sendErrorResponse, sendSuccessResponse } from "../../utils/responseFun";
 import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 // Helpers
 const buildBaseUrl = (req: Request) => {
@@ -32,7 +33,7 @@ const deleteLocalUploadIfExists = (url?: string) => {
     const abs = path.join(process.cwd(), pathname.replace(/^\/+/, ""));
     if (fs.existsSync(abs)) fs.unlinkSync(abs);
   } catch (err) {
-    console.error("deleteLocalUploadIfExists error:", (err as any)?.message || err);
+    logger.error({ err: (err as any)?.message || err }, "deleteLocalUploadIfExists error");
   }
 };
 
@@ -104,7 +105,7 @@ export const createService = async (req: Request, res: Response): Promise<Respon
     await invalidateCache("cache:services:*", "cache:dashboard:*");
     return sendSuccessResponse(res, doc, "Service created successfully");
   } catch (error: any) {
-    console.error("createService error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "createService error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -121,7 +122,7 @@ export const getServices = async (_req: Request, res: Response): Promise<Respons
     else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, services, "Services fetched successfully");
   } catch (error: any) {
-    console.error("getServices error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getServices error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -140,7 +141,7 @@ export const getServiceById = async (req: Request, res: Response): Promise<Respo
     else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, service, "Service fetched successfully");
   } catch (error: any) {
-    console.error("getServiceById error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getServiceById error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -196,7 +197,7 @@ export const updateService = async (req: Request, res: Response): Promise<Respon
     await invalidateCache("cache:services:*", "cache:dashboard:*");
     return sendSuccessResponse(res, updated, "Service updated successfully");
   } catch (error: any) {
-    console.error("updateService error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updateService error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -213,7 +214,7 @@ export const deleteService = async (req: Request, res: Response): Promise<Respon
     await invalidateCache("cache:services:*", "cache:dashboard:*");
     return sendSuccessResponse(res, { service: deleted }, "Service deleted successfully");
   } catch (error: any) {
-    console.error("deleteService error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deleteService error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

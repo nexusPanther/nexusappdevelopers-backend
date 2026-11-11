@@ -19,12 +19,15 @@ import BlogRoutes from "./blog/blog";
 import PopupRoutes from "./popupRoutes/popup";
 import MetaTagRoutes from "./metaTagRoutes/metaTag";
 import CacheRoutes from "./cacheRoutes/cacheRoutes";
+import LogRoutes from "./logRoutes/logRoutes";
 
 const route: Application = express();
 route.use("/api/meta-tags", MetaTagRoutes);
 route.use("/api/admin/meta-tags", MetaTagRoutes);
 route.use("/api/admin/cache", CacheRoutes);
 route.use("/api/cache", CacheRoutes);
+route.use("/api/admin/logs", LogRoutes);
+route.use("/api/logs", LogRoutes);
 route.use("/api/auth", Authroutes);
 route.use("/api/contact", ContactRoutes);
 route.use("/api/hero", HeroRoutes);

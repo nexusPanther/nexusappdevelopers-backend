@@ -8,6 +8,7 @@ import {
   sendSuccessWithoutResponse,
 } from "../../utils/responseFun";
 import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 const addContact = async (req: Request, res: Response): Promise<Response> => {
   try {
@@ -37,7 +38,7 @@ const addContact = async (req: Request, res: Response): Promise<Response> => {
       "Thank you for contacting us. We'll get back to you soon."
     );
   } catch (error: any) {
-    console.error("addContact error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "addContact error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -82,7 +83,7 @@ const getContacts = async (req: Request, res: Response): Promise<Response> => {
 
     return res.status(200).json(result);
   } catch (error: any) {
-    console.error("getContacts error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getContacts error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -110,7 +111,7 @@ const updateContactStatus = async (req: Request, res: Response): Promise<Respons
     await invalidateCache("cache:contacts:*", "cache:dashboard:*");
     return sendSuccessResponse(res, updated, "Contact status updated successfully");
   } catch (error: any) {
-    console.error("updateContactStatus error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updateContactStatus error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -125,7 +126,7 @@ const deleteContact = async (req: Request, res: Response): Promise<Response> => 
     await invalidateCache("cache:contacts:*", "cache:dashboard:*");
     return sendSuccessWithoutResponse(res, "Contact deleted successfully");
   } catch (error: any) {
-    console.error("deleteContact error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deleteContact error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -153,7 +154,7 @@ export const replyToContact = async (req: Request, res: Response): Promise<Respo
 
     return sendSuccessWithoutResponse(res, "Reply sent successfully.");
   } catch (error: any) {
-    console.error("Error sending reply email:", error?.message || error);
+    logger.error({ err: error?.message || error }, "Error sending reply email");
     return sendErrorResponse(res, 500, "An error occurred while sending the email.");
   }
 };

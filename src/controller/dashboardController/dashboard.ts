@@ -4,6 +4,7 @@ import { Testimonial } from "../../models/Testimonial/testimonialModal";
 import { Contact } from "../../models/ContactModal/contactModal";
 import { sendErrorResponse, sendSuccessResponse } from "../../utils/responseFun";
 import { getOrSetCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 const monthLabel = (date: Date) =>
   date.toLocaleString("en-US", { month: "short" });
@@ -93,7 +94,7 @@ export const getDashboardStats = async (_req: Request, res: Response): Promise<R
 
     return sendSuccessResponse(res, stats, "Dashboard stats fetched");
   } catch (error: any) {
-    console.error("getDashboardStats error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getDashboardStats error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

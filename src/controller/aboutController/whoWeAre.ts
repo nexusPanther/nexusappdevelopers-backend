@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { WhoWeAre } from "../../models/About/whoWeAreModal";
 import { sendErrorResponse, sendSuccessResponse, sendSuccessWithoutResponse } from "../../utils/responseFun";
 import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 const cleanString = (val: any) => {
   if (val === undefined || val === null) return undefined;
@@ -57,7 +58,7 @@ export const createWhoWeAre = async (req: Request, res: Response): Promise<Respo
 
     return sendSuccessResponse(res, doc, "Who We Are section created successfully");
   } catch (error: any) {
-    console.error("createWhoWeAre error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "createWhoWeAre error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -74,7 +75,7 @@ export const getWhoWeAreSections = async (_req: Request, res: Response): Promise
     else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, sections, "Who We Are sections fetched");
   } catch (error: any) {
-    console.error("getWhoWeAreSections error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getWhoWeAreSections error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -93,7 +94,7 @@ export const getWhoWeAreById = async (req: Request, res: Response): Promise<Resp
     else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, section, "Who We Are section fetched");
   } catch (error: any) {
-    console.error("getWhoWeAreById error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getWhoWeAreById error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -116,7 +117,7 @@ export const updateWhoWeAre = async (req: Request, res: Response): Promise<Respo
     await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, updated, "Who We Are section updated");
   } catch (error: any) {
-    console.error("updateWhoWeAre error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updateWhoWeAre error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -130,7 +131,7 @@ export const deleteWhoWeAre = async (req: Request, res: Response): Promise<Respo
     await invalidateCache("cache:about:*");
     return sendSuccessWithoutResponse(res, "Who We Are section deleted successfully");
   } catch (error: any) {
-    console.error("deleteWhoWeAre error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deleteWhoWeAre error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -147,7 +148,7 @@ export const toggleWhoWeAreStatus = async (req: Request, res: Response): Promise
     await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, section, "Who We Are section status updated");
   } catch (error: any) {
-    console.error("toggleWhoWeAreStatus error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "toggleWhoWeAreStatus error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

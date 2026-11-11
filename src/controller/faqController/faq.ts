@@ -5,6 +5,7 @@ import {
   sendSuccessResponse,
 } from "../../utils/responseFun";
 import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 // Create FAQ
 export const createFaq = async (req: Request, res: Response): Promise<Response> => {
@@ -20,7 +21,7 @@ export const createFaq = async (req: Request, res: Response): Promise<Response> 
 
     return sendSuccessResponse(res, faq, "FAQ created successfully");
   } catch (error: any) {
-    console.error("createFaq error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "createFaq error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -73,7 +74,7 @@ export const getFaqs = async (req: Request, res: Response): Promise<Response> =>
 
     return sendSuccessResponse(res, result, "FAQs fetched successfully");
   } catch (error: any) {
-    console.error("getFaqs error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getFaqs error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -104,7 +105,7 @@ export const upsertFaq = async (req: Request, res: Response): Promise<Response> 
     await invalidateCache("cache:faqs:*", "cache:dashboard:*");
     return sendSuccessResponse(res, updated, "FAQ updated successfully");
   } catch (error: any) {
-    console.error("upsertFaq error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "upsertFaq error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -118,7 +119,7 @@ export const deleteFaq = async (req: Request, res: Response): Promise<Response> 
     await invalidateCache("cache:faqs:*", "cache:dashboard:*");
     return sendSuccessResponse(res, { faq: deleted }, "FAQ deleted successfully");
   } catch (error: any) {
-    console.error("deleteFaq error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deleteFaq error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

@@ -4,6 +4,7 @@ import fs from "fs";
 import { MissionVision } from "../../models/About/missionVisionModal";
 import { sendErrorResponse, sendSuccessResponse, sendSuccessWithoutResponse } from "../../utils/responseFun";
 import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 const buildBaseUrl = (req: Request) => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
@@ -31,7 +32,7 @@ const deleteLocalUploadIfExists = (url?: string) => {
     const abs = path.join(process.cwd(), pathname.replace(/^\/+/, ""));
     if (fs.existsSync(abs)) fs.unlinkSync(abs);
   } catch (err) {
-    console.error("deleteLocalUploadIfExists error:", (err as any)?.message || err);
+    logger.error({ err: (err as any)?.message || err }, "deleteLocalUploadIfExists error");
   }
 };
 
@@ -89,7 +90,7 @@ export const createMissionVision = async (req: Request, res: Response): Promise<
 
     return sendSuccessResponse(res, doc, "Mission/Vision section created successfully");
   } catch (error: any) {
-    console.error("createMissionVision error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "createMissionVision error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -106,7 +107,7 @@ export const getMissionVisionSections = async (_req: Request, res: Response): Pr
     else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, sections, "Mission/Vision sections fetched");
   } catch (error: any) {
-    console.error("getMissionVisionSections error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getMissionVisionSections error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -125,7 +126,7 @@ export const getMissionVisionById = async (req: Request, res: Response): Promise
     else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, section, "Mission/Vision section fetched");
   } catch (error: any) {
-    console.error("getMissionVisionById error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getMissionVisionById error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -167,7 +168,7 @@ export const updateMissionVision = async (req: Request, res: Response): Promise<
     await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, updated, "Mission/Vision section updated");
   } catch (error: any) {
-    console.error("updateMissionVision error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updateMissionVision error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -183,7 +184,7 @@ export const deleteMissionVision = async (req: Request, res: Response): Promise<
     await invalidateCache("cache:about:*");
     return sendSuccessWithoutResponse(res, "Mission/Vision section deleted successfully");
   } catch (error: any) {
-    console.error("deleteMissionVision error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deleteMissionVision error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -200,7 +201,7 @@ export const toggleMissionVisionStatus = async (req: Request, res: Response): Pr
     await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, section, "Mission/Vision section status updated");
   } catch (error: any) {
-    console.error("toggleMissionVisionStatus error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "toggleMissionVisionStatus error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

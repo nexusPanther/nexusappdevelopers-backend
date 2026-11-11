@@ -12,11 +12,13 @@ import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
+import logger, { httpLogger } from "./utils/logger";
 
 // instantize an app from express() function
 const app: Application = express();
 
 app.disable('x-powered-by');
+app.use(httpLogger);
 app.use(cookieParser());
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
@@ -107,7 +109,7 @@ import { connectToRedis } from "./Database/redis";
 
 // Redis setup
 connectToRedis().catch((err) => {
-  console.warn("Redis startup note:", err?.message || err);
+  logger.warn({ err }, "Redis startup note");
 });
 
 //MongoDb setup
@@ -116,11 +118,10 @@ connectToDatabase()
     initMetaTagsSeed();
   })
   .catch((err) => {
-    console.error("Failed to connect to MongoDb:", err);
+    logger.error({ err }, "Failed to connect to MongoDb");
   });
 app.use(route);
 const PORT = process.env.PORT || 7000;
 app.listen(PORT, () => {
-  console.log("server has started on port");
-  console.log("http://localhost:" + PORT);
+  logger.info(`Server has started on port http://localhost:${PORT}`);
 });

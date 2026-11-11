@@ -4,6 +4,7 @@ import { Admin } from "../../models/AdminModal/AdminModal";
 import sanitize from "mongo-sanitize";
 import { getToken } from "../../utils/helperFun";
 import { sendErrorResponse, sendSuccessResponse } from "../../utils/responseFun";
+import logger from "../../utils/logger";
 
 const buildBaseUrl = (req: Request) => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
@@ -60,7 +61,7 @@ const Login = async (req: Request, res: Response): Promise<Response> => {
 
     return sendSuccessResponse(res, { user: payload, token }, "Login successful");
   } catch (error: any) {
-    console.error("Login error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "Login error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

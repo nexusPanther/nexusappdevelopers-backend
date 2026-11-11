@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
+import logger from "./logger";
 
 dotenv.config();
 
@@ -27,7 +28,7 @@ export const sendEmailToFounders = async (contactDetails: { name: string, email:
   ].filter(Boolean) as string[];
 
   if (foundersEmails.length === 0) {
-    console.error("No founder emails configured.");
+    logger.error("No founder emails configured.");
     return;
   }
 
@@ -54,7 +55,7 @@ export const sendEmailToFounders = async (contactDetails: { name: string, email:
   try {
     await transporter.sendMail(mailOptions);
   } catch (error) {
-    console.error("Error sending email to founders:", error);
+    logger.error({ err: error }, "Error sending email to founders");
   }
 };
 
@@ -79,7 +80,7 @@ export const sendThankYouEmail = async (userEmail: string, userName: string) => 
   try {
     await transporter.sendMail(mailOptions);
   } catch (error) {
-    console.error("Error sending thank you email:", error);
+    logger.error({ err: error }, "Error sending thank you email");
   }
 };
 

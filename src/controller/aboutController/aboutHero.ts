@@ -4,6 +4,7 @@ import fs from "fs";
 import { AboutHero } from "../../models/About/aboutHeroModal";
 import { sendErrorResponse, sendSuccessResponse, sendSuccessWithoutResponse } from "../../utils/responseFun";
 import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 const buildBaseUrl = (req: Request) => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
@@ -31,7 +32,7 @@ const deleteLocalUploadIfExists = (url?: string) => {
     const abs = path.join(process.cwd(), pathname.replace(/^\/+/, ""));
     if (fs.existsSync(abs)) fs.unlinkSync(abs);
   } catch (err) {
-    console.error("deleteLocalUploadIfExists error:", (err as any)?.message || err);
+    logger.error({ err: (err as any)?.message || err }, "deleteLocalUploadIfExists error");
   }
 };
 
@@ -76,7 +77,7 @@ export const createAboutHero = async (req: Request, res: Response): Promise<Resp
 
     return sendSuccessResponse(res, doc, "About hero section created successfully");
   } catch (error: any) {
-    console.error("createAboutHero error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "createAboutHero error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -93,7 +94,7 @@ export const getAboutHeroSections = async (_req: Request, res: Response): Promis
     else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, sections, "About hero sections fetched");
   } catch (error: any) {
-    console.error("getAboutHeroSections error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getAboutHeroSections error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -112,7 +113,7 @@ export const getAboutHeroById = async (req: Request, res: Response): Promise<Res
     else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, section, "About hero section fetched");
   } catch (error: any) {
-    console.error("getAboutHeroById error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getAboutHeroById error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -148,7 +149,7 @@ export const updateAboutHero = async (req: Request, res: Response): Promise<Resp
     await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, updated, "About hero section updated");
   } catch (error: any) {
-    console.error("updateAboutHero error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updateAboutHero error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -163,7 +164,7 @@ export const deleteAboutHero = async (req: Request, res: Response): Promise<Resp
     await invalidateCache("cache:about:*");
     return sendSuccessWithoutResponse(res, "About hero section deleted successfully");
   } catch (error: any) {
-    console.error("deleteAboutHero error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deleteAboutHero error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -180,7 +181,7 @@ export const toggleAboutHeroStatus = async (req: Request, res: Response): Promis
     await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, section, "About hero section status updated");
   } catch (error: any) {
-    console.error("toggleAboutHeroStatus error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "toggleAboutHeroStatus error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

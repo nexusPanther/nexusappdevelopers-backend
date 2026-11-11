@@ -9,6 +9,7 @@ import {
   redisDel,
   redisDelByPattern,
 } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 // Redis Cache Keys
 const CACHE_KEY_ALL = "meta_tags:all";
@@ -24,7 +25,7 @@ export const invalidateMetaTagsCache = async () => {
     await redisDel(CACHE_KEY_ALL, CACHE_KEY_MAP);
     await redisDelByPattern("meta_tags:route:*");
   } catch (err: any) {
-    console.warn("Error invalidating meta tags Redis cache:", err?.message || err);
+    logger.warn({ err: err?.message || err }, "Error invalidating meta tags Redis cache");
   }
 };
 
@@ -59,7 +60,7 @@ export const initMetaTagsSeed = async () => {
     }
     await invalidateMetaTagsCache();
   } catch (err: any) {
-    console.error("initMetaTagsSeed error:", err?.message || err);
+    logger.error({ err: err?.message || err }, "initMetaTagsSeed error");
   }
 };
 
@@ -121,7 +122,7 @@ export const getAllMetaTags = async (req: Request, res: Response): Promise<Respo
     res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, list, "Meta tags fetched successfully");
   } catch (error: any) {
-    console.error("getAllMetaTags error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getAllMetaTags error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -169,7 +170,7 @@ export const getMetaTagByRoute = async (req: Request, res: Response): Promise<Re
     res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, doc, "Meta tag fetched successfully");
   } catch (error: any) {
-    console.error("getMetaTagByRoute error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getMetaTagByRoute error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -252,7 +253,7 @@ export const createOrUpdateMetaTag = async (req: Request, res: Response): Promis
 
     return sendSuccessResponse(res, doc, "Meta tag saved successfully");
   } catch (error: any) {
-    console.error("createOrUpdateMetaTag error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "createOrUpdateMetaTag error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -337,7 +338,7 @@ export const updateMetaTagById = async (req: Request, res: Response): Promise<Re
 
     return sendSuccessResponse(res, doc, "Meta tag updated successfully");
   } catch (error: any) {
-    console.error("updateMetaTagById error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updateMetaTagById error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -359,7 +360,7 @@ export const deleteMetaTag = async (req: Request, res: Response): Promise<Respon
 
     return sendSuccessResponse(res, { metaTag: doc }, "Meta tag deleted successfully");
   } catch (error: any) {
-    console.error("deleteMetaTag error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deleteMetaTag error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -376,7 +377,7 @@ export const seedDefaultMetaTags = async (_req: Request, res: Response): Promise
     await redisSet(CACHE_KEY_ALL, list, CACHE_TTL);
     return sendSuccessResponse(res, list, "Default meta tags seeded and cached in Redis successfully");
   } catch (error: any) {
-    console.error("seedDefaultMetaTags error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "seedDefaultMetaTags error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
