@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import { StandOut } from "../../models/About/standOutModal";
 import { sendErrorResponse, sendSuccessResponse, sendSuccessWithoutResponse } from "../../utils/responseFun";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 const cleanString = (val: any) => {
   if (val === undefined || val === null) return undefined;
@@ -68,9 +70,11 @@ export const createStandOut = async (req: Request, res: Response): Promise<Respo
       isActive,
     });
     await doc.save();
+    await invalidateCache("cache:about:*");
+
     return sendSuccessResponse(res, doc, "Stand Out section created successfully");
   } catch (error: any) {
-    console.error("createStandOut error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "createStandOut error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -78,10 +82,16 @@ export const createStandOut = async (req: Request, res: Response): Promise<Respo
 // Read all
 export const getStandOutSections = async (_req: Request, res: Response): Promise<Response> => {
   try {
-    const sections = await StandOut.find().sort({ createdAt: -1 });
+    const { data: sections, isCached } = await getOrSetCache(
+      "cache:about:stand-out:all",
+      () => StandOut.find().sort({ createdAt: -1 }),
+      86400
+    );
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, sections, "Stand Out sections fetched");
   } catch (error: any) {
-    console.error("getStandOutSections error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getStandOutSections error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -90,11 +100,17 @@ export const getStandOutSections = async (_req: Request, res: Response): Promise
 export const getStandOutById = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { id } = req.params;
-    const section = await StandOut.findById(id);
+    const { data: section, isCached } = await getOrSetCache(
+      `cache:about:stand-out:id:${id}`,
+      () => StandOut.findById(id),
+      86400
+    );
     if (!section) return sendErrorResponse(res, 404, "Stand Out section not found");
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, section, "Stand Out section fetched");
   } catch (error: any) {
-    console.error("getStandOutById error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getStandOutById error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -115,9 +131,10 @@ export const updateStandOut = async (req: Request, res: Response): Promise<Respo
     if (isActive !== undefined) update.isActive = isActive;
 
     const updated = await StandOut.findByIdAndUpdate(id, update, { new: true, runValidators: true });
+    await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, updated, "Stand Out section updated");
   } catch (error: any) {
-    console.error("updateStandOut error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updateStandOut error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -128,9 +145,10 @@ export const deleteStandOut = async (req: Request, res: Response): Promise<Respo
     const { id } = req.params;
     const deleted = await StandOut.findByIdAndDelete(id);
     if (!deleted) return sendErrorResponse(res, 404, "Stand Out section not found");
+    await invalidateCache("cache:about:*");
     return sendSuccessWithoutResponse(res, "Stand Out section deleted successfully");
   } catch (error: any) {
-    console.error("deleteStandOut error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deleteStandOut error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -144,9 +162,10 @@ export const toggleStandOutStatus = async (req: Request, res: Response): Promise
     if (!section) return sendErrorResponse(res, 404, "Stand Out section not found");
     section.isActive = Boolean(isActive);
     await section.save();
+    await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, section, "Stand Out section status updated");
   } catch (error: any) {
-    console.error("toggleStandOutStatus error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "toggleStandOutStatus error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

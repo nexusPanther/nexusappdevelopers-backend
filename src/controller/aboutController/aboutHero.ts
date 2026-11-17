@@ -3,6 +3,8 @@ import path from "path";
 import fs from "fs";
 import { AboutHero } from "../../models/About/aboutHeroModal";
 import { sendErrorResponse, sendSuccessResponse, sendSuccessWithoutResponse } from "../../utils/responseFun";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 const buildBaseUrl = (req: Request) => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
@@ -30,7 +32,7 @@ const deleteLocalUploadIfExists = (url?: string) => {
     const abs = path.join(process.cwd(), pathname.replace(/^\/+/, ""));
     if (fs.existsSync(abs)) fs.unlinkSync(abs);
   } catch (err) {
-    console.error("deleteLocalUploadIfExists error:", (err as any)?.message || err);
+    logger.error({ err: (err as any)?.message || err }, "deleteLocalUploadIfExists error");
   }
 };
 
@@ -51,6 +53,7 @@ const normalizeFields = (body: any) => {
     highlightedHeading: clean(body.highlightedHeading),
     paragraph: clean(body.paragraph),
     image: clean(body.image),
+    videoUrl: body.videoUrl !== undefined && body.videoUrl !== null ? String(body.videoUrl).trim() : undefined,
     isActive: bool(body.isActive),
   };
 };
@@ -60,7 +63,7 @@ export const createAboutHero = async (req: Request, res: Response): Promise<Resp
   try {
     const file = ((req as any).file as Express.Multer.File | undefined) ||
       (((req as any).files as Express.Multer.File[] | undefined)?.[0]);
-    const { heading, highlightedHeading, paragraph, image, isActive } = normalizeFields(req.body);
+    const { heading, highlightedHeading, paragraph, image, videoUrl, isActive } = normalizeFields(req.body);
 
     if (!heading) return sendErrorResponse(res, 400, "heading is required");
 
@@ -68,11 +71,13 @@ export const createAboutHero = async (req: Request, res: Response): Promise<Resp
     const uploadedRelative = file ? path.posix.join("/uploads/aboutHero", file.filename) : undefined;
     const finalImage = ensureFullUrl(uploadedRelative ?? image, baseUrl);
 
-    const doc = new AboutHero({ heading, highlightedHeading, paragraph, image: finalImage, isActive });
+    const doc = new AboutHero({ heading, highlightedHeading, paragraph, image: finalImage, videoUrl: videoUrl || "", isActive });
     await doc.save();
+    await invalidateCache("cache:about:*");
+
     return sendSuccessResponse(res, doc, "About hero section created successfully");
   } catch (error: any) {
-    console.error("createAboutHero error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "createAboutHero error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -80,10 +85,16 @@ export const createAboutHero = async (req: Request, res: Response): Promise<Resp
 // Read all
 export const getAboutHeroSections = async (_req: Request, res: Response): Promise<Response> => {
   try {
-    const sections = await AboutHero.find().sort({ createdAt: -1 });
+    const { data: sections, isCached } = await getOrSetCache(
+      "cache:about:hero:all",
+      () => AboutHero.find().sort({ createdAt: -1 }),
+      86400
+    );
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, sections, "About hero sections fetched");
   } catch (error: any) {
-    console.error("getAboutHeroSections error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getAboutHeroSections error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -92,11 +103,17 @@ export const getAboutHeroSections = async (_req: Request, res: Response): Promis
 export const getAboutHeroById = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { id } = req.params;
-    const section = await AboutHero.findById(id);
+    const { data: section, isCached } = await getOrSetCache(
+      `cache:about:hero:id:${id}`,
+      () => AboutHero.findById(id),
+      86400
+    );
     if (!section) return sendErrorResponse(res, 404, "About hero section not found");
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, section, "About hero section fetched");
   } catch (error: any) {
-    console.error("getAboutHeroById error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getAboutHeroById error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -110,12 +127,13 @@ export const updateAboutHero = async (req: Request, res: Response): Promise<Resp
 
     const file = ((req as any).file as Express.Multer.File | undefined) ||
       (((req as any).files as Express.Multer.File[] | undefined)?.[0]);
-    const { heading, highlightedHeading, paragraph, image, isActive } = normalizeFields(req.body);
+    const { heading, highlightedHeading, paragraph, image, videoUrl, isActive } = normalizeFields(req.body);
 
     const update: any = {};
     if (heading !== undefined) update.heading = heading;
     if (highlightedHeading !== undefined) update.highlightedHeading = highlightedHeading;
     if (paragraph !== undefined) update.paragraph = paragraph;
+    if (videoUrl !== undefined) update.videoUrl = videoUrl;
     if (isActive !== undefined) update.isActive = isActive;
 
     const baseUrl = buildBaseUrl(req);
@@ -128,9 +146,10 @@ export const updateAboutHero = async (req: Request, res: Response): Promise<Resp
     }
 
     const updated = await AboutHero.findByIdAndUpdate(id, update, { new: true, runValidators: true });
+    await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, updated, "About hero section updated");
   } catch (error: any) {
-    console.error("updateAboutHero error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updateAboutHero error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -142,9 +161,10 @@ export const deleteAboutHero = async (req: Request, res: Response): Promise<Resp
     const deleted = await AboutHero.findByIdAndDelete(id);
     if (!deleted) return sendErrorResponse(res, 404, "About hero section not found");
     deleteLocalUploadIfExists((deleted as any).image as string | undefined);
+    await invalidateCache("cache:about:*");
     return sendSuccessWithoutResponse(res, "About hero section deleted successfully");
   } catch (error: any) {
-    console.error("deleteAboutHero error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deleteAboutHero error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -158,9 +178,10 @@ export const toggleAboutHeroStatus = async (req: Request, res: Response): Promis
     if (!section) return sendErrorResponse(res, 404, "About hero section not found");
     section.isActive = Boolean(isActive);
     await section.save();
+    await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, section, "About hero section status updated");
   } catch (error: any) {
-    console.error("toggleAboutHeroStatus error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "toggleAboutHeroStatus error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import { Values } from "../../models/About/valuesModal";
 import { sendErrorResponse, sendSuccessResponse, sendSuccessWithoutResponse } from "../../utils/responseFun";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 const cleanString = (val: any) => {
   if (val === undefined || val === null) return undefined;
@@ -55,9 +57,11 @@ export const createValues = async (req: Request, res: Response): Promise<Respons
 
     const doc = new Values({ mainTitle, subtitle, values, isActive });
     await doc.save();
+    await invalidateCache("cache:about:*");
+
     return sendSuccessResponse(res, doc, "Values section created successfully");
   } catch (error: any) {
-    console.error("createValues error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "createValues error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -65,10 +69,16 @@ export const createValues = async (req: Request, res: Response): Promise<Respons
 // Read all
 export const getValuesSections = async (_req: Request, res: Response): Promise<Response> => {
   try {
-    const sections = await Values.find().sort({ createdAt: -1 });
+    const { data: sections, isCached } = await getOrSetCache(
+      "cache:about:values:all",
+      () => Values.find().sort({ createdAt: -1 }),
+      86400
+    );
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, sections, "Values sections fetched");
   } catch (error: any) {
-    console.error("getValuesSections error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getValuesSections error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -77,11 +87,17 @@ export const getValuesSections = async (_req: Request, res: Response): Promise<R
 export const getValuesById = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { id } = req.params;
-    const section = await Values.findById(id);
+    const { data: section, isCached } = await getOrSetCache(
+      `cache:about:values:id:${id}`,
+      () => Values.findById(id),
+      86400
+    );
     if (!section) return sendErrorResponse(res, 404, "Values section not found");
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, section, "Values section fetched");
   } catch (error: any) {
-    console.error("getValuesById error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getValuesById error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -106,9 +122,10 @@ export const updateValues = async (req: Request, res: Response): Promise<Respons
     if (isActive !== undefined) update.isActive = isActive;
 
     const updated = await Values.findByIdAndUpdate(id, update, { new: true, runValidators: true });
+    await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, updated, "Values section updated");
   } catch (error: any) {
-    console.error("updateValues error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updateValues error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -119,9 +136,10 @@ export const deleteValues = async (req: Request, res: Response): Promise<Respons
     const { id } = req.params;
     const deleted = await Values.findByIdAndDelete(id);
     if (!deleted) return sendErrorResponse(res, 404, "Values section not found");
+    await invalidateCache("cache:about:*");
     return sendSuccessWithoutResponse(res, "Values section deleted successfully");
   } catch (error: any) {
-    console.error("deleteValues error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deleteValues error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -135,9 +153,10 @@ export const toggleValuesStatus = async (req: Request, res: Response): Promise<R
     if (!section) return sendErrorResponse(res, 404, "Values section not found");
     section.isActive = Boolean(isActive);
     await section.save();
+    await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, section, "Values section status updated");
   } catch (error: any) {
-    console.error("toggleValuesStatus error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "toggleValuesStatus error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

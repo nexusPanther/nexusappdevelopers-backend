@@ -7,6 +7,8 @@ import {
   sendSuccessResponse,
   sendSuccessWithoutResponse,
 } from "../../utils/responseFun";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 const addContact = async (req: Request, res: Response): Promise<Response> => {
   try {
@@ -25,6 +27,7 @@ const addContact = async (req: Request, res: Response): Promise<Response> => {
       message,
     });
     await contact.save();
+    await invalidateCache("cache:contacts:*", "cache:dashboard:*");
 
     // Send emails asynchronously without blocking the response
     sendEmailToFounders({ name, email, phone, phoneCode, projectType, message });
@@ -35,7 +38,7 @@ const addContact = async (req: Request, res: Response): Promise<Response> => {
       "Thank you for contacting us. We'll get back to you soon."
     );
   } catch (error: any) {
-    console.error("addContact error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "addContact error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -44,31 +47,43 @@ const getContacts = async (req: Request, res: Response): Promise<Response> => {
   try {
     const page = Math.max(parseInt(req.query.page as string, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 10, 1), 100);
-    const skip = (page - 1) * limit;
 
-    const [contacts, total] = await Promise.all([
-      Contact.find().sort({ _id: -1 }).skip(skip).limit(limit),
-      Contact.countDocuments(),
-    ]);
+    const { data: result, isCached } = await getOrSetCache(
+      `cache:contacts:page:${page}:limit:${limit}`,
+      async () => {
+        const skip = (page - 1) * limit;
 
-    const totalPages = Math.max(Math.ceil(total / limit), 1);
+        const [contacts, total] = await Promise.all([
+          Contact.find().sort({ _id: -1 }).skip(skip).limit(limit),
+          Contact.countDocuments(),
+        ]);
 
-    return res.status(200).json({
-      status: true,
-      data: contacts,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-        count: contacts.length,
-        hasNext: page < totalPages,
-        hasPrev: page > 1,
+        const totalPages = Math.max(Math.ceil(total / limit), 1);
+
+        return {
+          status: true,
+          data: contacts,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages,
+            count: contacts.length,
+            hasNext: page < totalPages,
+            hasPrev: page > 1,
+          },
+          message: "Contacts fetched",
+        };
       },
-      message: "Contacts fetched",
-    });
+      300
+    );
+
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
+
+    return res.status(200).json(result);
   } catch (error: any) {
-    console.error("getContacts error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getContacts error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -93,9 +108,10 @@ const updateContactStatus = async (req: Request, res: Response): Promise<Respons
       return sendErrorResponse(res, 404, "Contact not found");
     }
 
+    await invalidateCache("cache:contacts:*", "cache:dashboard:*");
     return sendSuccessResponse(res, updated, "Contact status updated successfully");
   } catch (error: any) {
-    console.error("updateContactStatus error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updateContactStatus error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -107,9 +123,10 @@ const deleteContact = async (req: Request, res: Response): Promise<Response> => 
     if (!deleted) {
       return sendErrorResponse(res, 404, "Contact not found");
     }
+    await invalidateCache("cache:contacts:*", "cache:dashboard:*");
     return sendSuccessWithoutResponse(res, "Contact deleted successfully");
   } catch (error: any) {
-    console.error("deleteContact error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deleteContact error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -137,7 +154,7 @@ export const replyToContact = async (req: Request, res: Response): Promise<Respo
 
     return sendSuccessWithoutResponse(res, "Reply sent successfully.");
   } catch (error: any) {
-    console.error("Error sending reply email:", error?.message || error);
+    logger.error({ err: error?.message || error }, "Error sending reply email");
     return sendErrorResponse(res, 500, "An error occurred while sending the email.");
   }
 };
