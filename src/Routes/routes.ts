@@ -16,8 +16,18 @@ import StandOutRoutes from "./aboutRoutes/standOut";
 import LegalRoutes from "../Routes/legal/legal";
 import DashboardRoutes from "./dashboard/dashboard";
 import BlogRoutes from "./blog/blog";
+import PopupRoutes from "./popupRoutes/popup";
+import MetaTagRoutes from "./metaTagRoutes/metaTag";
+import CacheRoutes from "./cacheRoutes/cacheRoutes";
+import LogRoutes from "./logRoutes/logRoutes";
 
 const route: Application = express();
+route.use("/api/meta-tags", MetaTagRoutes);
+route.use("/api/admin/meta-tags", MetaTagRoutes);
+route.use("/api/admin/cache", CacheRoutes);
+route.use("/api/cache", CacheRoutes);
+route.use("/api/admin/logs", LogRoutes);
+route.use("/api/logs", LogRoutes);
 route.use("/api/auth", Authroutes);
 route.use("/api/contact", ContactRoutes);
 route.use("/api/hero", HeroRoutes);
@@ -33,11 +43,17 @@ route.use("/api/admin/landing/about-sections", AboutRoutes);
 route.use("/api/admin/about-sections", AboutRoutes);
 route.use("/api/admin/faq", FaqRoutes);
 route.use("/api/admin/testimonials", TestimonialRoutes);
+// Testimonial routes mounted at /api/testimonials and /api/v1/testimonials as per specification
+route.use("/api/testimonials", TestimonialRoutes);
+route.use("/api/v1/testimonials", TestimonialRoutes);
 route.use("/api/services", ServiceRoutes);
 route.use("/api/portfolio", PortfolioRoutes);
 route.use("/api/legal", LegalRoutes);
 route.use("/api/admin/dashboard", DashboardRoutes);
 route.use("/api/blog", BlogRoutes);
-
+route.use("/api/popups", PopupRoutes);
+route.use("/api/admin/popups", PopupRoutes);
+route.use("/api/v1/popups", PopupRoutes);
+route.use("/api/v1/admin/popups", PopupRoutes);
 
 export default route;

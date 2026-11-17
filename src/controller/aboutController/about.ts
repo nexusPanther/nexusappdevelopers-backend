@@ -3,6 +3,8 @@ import path from "path";
 import fs from "fs";
 import { AboutSection } from "../../models/About/aboutModal";
 import { sendErrorResponse, sendSuccessResponse, sendSuccessWithoutResponse } from "../../utils/responseFun";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 const buildBaseUrl = (req: Request) => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
@@ -30,7 +32,7 @@ const deleteLocalUploadIfExists = (url?: string) => {
     const abs = path.join(process.cwd(), pathname.replace(/^\/+/, ""));
     if (fs.existsSync(abs)) fs.unlinkSync(abs);
   } catch (err) {
-    console.error("deleteLocalUploadIfExists error:", (err as any)?.message || err);
+    logger.error({ err: (err as any)?.message || err }, "deleteLocalUploadIfExists error");
   }
 };
 
@@ -70,9 +72,11 @@ export const createAbout = async (req: Request, res: Response): Promise<Response
 
     const doc = new AboutSection({ heading, highlightedHeading, paragraph, image: finalImage, isActive });
     await doc.save();
+    await invalidateCache("cache:about:*");
+
     return sendSuccessResponse(res, doc, "About section created successfully");
   } catch (error: any) {
-    console.error("createAbout error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "createAbout error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -80,10 +84,16 @@ export const createAbout = async (req: Request, res: Response): Promise<Response
 // Get all about sections
 export const getAbouts = async (_req: Request, res: Response): Promise<Response> => {
   try {
-    const abouts = await AboutSection.find().sort({ createdAt: -1 });
+    const { data: abouts, isCached } = await getOrSetCache(
+      "cache:about:all",
+      () => AboutSection.find().sort({ createdAt: -1 }),
+      86400
+    );
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, abouts, "About sections fetched");
   } catch (error: any) {
-    console.error("getAbouts error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getAbouts error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -92,11 +102,17 @@ export const getAbouts = async (_req: Request, res: Response): Promise<Response>
 export const getAboutById = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { id } = req.params;
-    const about = await AboutSection.findById(id);
+    const { data: about, isCached } = await getOrSetCache(
+      `cache:about:id:${id}`,
+      () => AboutSection.findById(id),
+      86400
+    );
     if (!about) return sendErrorResponse(res, 404, "About section not found");
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, about, "About section fetched");
   } catch (error: any) {
-    console.error("getAboutById error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getAboutById error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -128,9 +144,10 @@ export const updateAbout = async (req: Request, res: Response): Promise<Response
     }
 
     const updated = await AboutSection.findByIdAndUpdate(id, update, { new: true, runValidators: true });
+    await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, updated, "About section updated");
   } catch (error: any) {
-    console.error("updateAbout error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updateAbout error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -142,9 +159,10 @@ export const deleteAbout = async (req: Request, res: Response): Promise<Response
     const deleted = await AboutSection.findByIdAndDelete(id);
     if (!deleted) return sendErrorResponse(res, 404, "About section not found");
     deleteLocalUploadIfExists((deleted as any).image as string | undefined);
+    await invalidateCache("cache:about:*");
     return sendSuccessWithoutResponse(res, "About section deleted successfully");
   } catch (error: any) {
-    console.error("deleteAbout error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deleteAbout error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -158,9 +176,10 @@ export const toggleAboutStatus = async (req: Request, res: Response): Promise<Re
     if (!about) return sendErrorResponse(res, 404, "About section not found");
     about.isActive = Boolean(isActive);
     await about.save();
+    await invalidateCache("cache:about:*");
     return sendSuccessResponse(res, about, "About section status updated");
   } catch (error: any) {
-    console.error("toggleAboutStatus error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "toggleAboutStatus error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

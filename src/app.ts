@@ -10,12 +10,16 @@ import { Admin } from "./models/AdminModal/AdminModal";
 import { AdminResponse } from "./types/admin";
 import cors from "cors";
 import helmet from "helmet";
+import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
+import logger, { httpLogger } from "./utils/logger";
 
 // instantize an app from express() function
 const app: Application = express();
 
 app.disable('x-powered-by');
+app.use(httpLogger);
+app.use(cookieParser());
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
@@ -57,8 +61,19 @@ const loginLimiter = rateLimit({
 
 app.use('/api/', apiLimiter);
 app.use('/api/auth/login', loginLimiter);
+
+const cookieExtractor = (req: express.Request): string | null => {
+  if (req && req.cookies && req.cookies.nexus_session) {
+    return req.cookies.nexus_session;
+  }
+  return null;
+};
+
 const opts: StrategyOptions = {
-  jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+  jwtFromRequest: ExtractJwt.fromExtractors([
+    cookieExtractor,
+    ExtractJwt.fromAuthHeaderAsBearerToken()
+  ]),
   secretOrKey: process.env.JWT_SECRET as string, // Ensure JWT_SECRET is defined in your environment variables
 };
 
@@ -77,18 +92,38 @@ passport.use(
     }
   })
 );
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
-// Static files for uploads (e.g., /uploads/testimonials/<file>)
-app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ limit: "100mb", extended: true }));
+// Static files for uploads & assets with HTTP caching headers
+const staticOptions = {
+  maxAge: "7d",
+  etag: true,
+};
+app.use("/uploads", express.static(path.join(__dirname, "../uploads"), staticOptions));
+app.use("/api/uploads", express.static(path.join(__dirname, "../uploads"), staticOptions));
+app.use("/static", express.static(path.join(__dirname, "../public/static"), staticOptions));
+app.use("/public", express.static(path.join(__dirname, "../public"), staticOptions));
+
+import { initMetaTagsSeed } from "./controller/metaTagController/metaTag";
+import { connectToRedis } from "./Database/redis";
+
+// Redis setup
+connectToRedis().catch((err) => {
+  logger.warn({ err }, "Redis startup note");
+});
 
 //MongoDb setup
-connectToDatabase();
+connectToDatabase()
+  .then(() => {
+    initMetaTagsSeed();
+  })
+  .catch((err) => {
+    logger.error({ err }, "Failed to connect to MongoDb");
+  });
 app.use(route);
 const PORT = process.env.PORT || 7000;
 app.listen(PORT, () => {
-  console.log("server has started on port");
-  console.log("http://localhost:" + PORT);
+  logger.info(`Server has started on port http://localhost:${PORT}`);
 });
 
 (async () => {

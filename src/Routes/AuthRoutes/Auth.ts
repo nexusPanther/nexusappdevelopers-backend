@@ -28,6 +28,10 @@ const upload = multer({ storage });
 
 router.post("/signup", Signup as any);
 router.post("/login", Login as any);
+router.post("/logout", (req, res) => {
+	res.clearCookie("nexus_session", { path: "/" });
+	return res.status(200).json({ status: true, message: "Logged out successfully" });
+});
 router.patch("/update-profile", upload.single("avatar"), passport.authenticate("jwt", { session: false }), updateAdminProfile as any);
 router.post("/change-password", passport.authenticate("jwt", { session: false }),changeAdminPassword as any);
 

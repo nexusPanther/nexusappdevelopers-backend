@@ -7,6 +7,8 @@ import {
 } from "../../utils/responseFun";
 import path from "path";
 import fs from "fs";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 const buildBaseUrl = (req: Request) => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
@@ -34,7 +36,7 @@ const deleteLocalUploadIfExists = (url?: string) => {
     const abs = path.join(process.cwd(), pathname.replace(/^\/+/, ""));
     if (fs.existsSync(abs)) fs.unlinkSync(abs);
   } catch (err) {
-    console.error("deleteLocalUploadIfExists error:", (err as any)?.message || err);
+    logger.error({ err: (err as any)?.message || err }, "deleteLocalUploadIfExists error");
   }
 };
 
@@ -76,10 +78,11 @@ const createHero = async (req: Request, res: Response): Promise<Response> => {
 
     const hero = new HeroSection({ heading, highlightedHeading, paragraph, image: finalImage, isActive });
     await hero.save();
+    await invalidateCache("cache:hero:*");
 
     return sendSuccessResponse(res, hero, "Hero section created successfully");
   } catch (error: any) {
-    console.error("createHero error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "createHero error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -87,10 +90,16 @@ const createHero = async (req: Request, res: Response): Promise<Response> => {
 // Get list of hero sections
 const getHeroes = async (req: Request, res: Response): Promise<Response> => {
   try {
-    const heroes = await HeroSection.find().sort({ createdAt: -1 });
+    const { data: heroes, isCached } = await getOrSetCache(
+      "cache:hero:all",
+      () => HeroSection.find().sort({ createdAt: -1 }),
+      86400
+    );
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, heroes, "Hero sections fetched");
   } catch (error: any) {
-    console.error("getHeroes error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getHeroes error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -99,11 +108,17 @@ const getHeroes = async (req: Request, res: Response): Promise<Response> => {
 const getHeroById = async (req: Request, res: Response): Promise<Response> => {
   try {
     const { id } = req.params;
-    const hero = await HeroSection.findById(id);
+    const { data: hero, isCached } = await getOrSetCache(
+      `cache:hero:id:${id}`,
+      () => HeroSection.findById(id),
+      86400
+    );
     if (!hero) return sendErrorResponse(res, 404, "Hero section not found");
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, hero, "Hero section fetched");
   } catch (error: any) {
-    console.error("getHeroById error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getHeroById error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -135,9 +150,10 @@ const updateHero = async (req: Request, res: Response): Promise<Response> => {
     }
 
     const hero = await HeroSection.findByIdAndUpdate(id, update, { new: true });
+    await invalidateCache("cache:hero:*");
     return sendSuccessResponse(res, hero, "Hero section updated");
   } catch (error: any) {
-    console.error("updateHero error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updateHero error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -149,9 +165,10 @@ const deleteHero = async (req: Request, res: Response): Promise<Response> => {
     const hero = await HeroSection.findByIdAndDelete(id);
     if (!hero) return sendErrorResponse(res, 404, "Hero section not found");
     deleteLocalUploadIfExists((hero as any).image as string | undefined);
+    await invalidateCache("cache:hero:*");
     return sendSuccessWithoutResponse(res, "Hero section deleted successfully");
   } catch (error: any) {
-    console.error("deleteHero error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deleteHero error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -165,9 +182,10 @@ const toggleHeroStatus = async (req: Request, res: Response): Promise<Response> 
     if (!hero) return sendErrorResponse(res, 404, "Hero section not found");
     hero.isActive = Boolean(isActive);
     await hero.save();
+    await invalidateCache("cache:hero:*");
     return sendSuccessResponse(res, hero, "Hero section status updated");
   } catch (error: any) {
-    console.error("toggleHeroStatus error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "toggleHeroStatus error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

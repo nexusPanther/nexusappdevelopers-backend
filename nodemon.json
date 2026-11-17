@@ -1,0 +1,11 @@
+{
+  "watch": ["build/app.js"],
+  "ignore": [
+    "uploads/*",
+    "public/*",
+    "node_modules/*",
+    ".git/*",
+    "*.log"
+  ],
+  "delay": 1000
+}

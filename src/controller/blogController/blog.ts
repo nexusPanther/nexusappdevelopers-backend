@@ -3,6 +3,8 @@ import path from "path";
 import fs from "fs";
 import { Blog } from "../../models/Blog/blogModal";
 import { sendErrorResponse, sendSuccessResponse, sendSuccessWithoutResponse } from "../../utils/responseFun";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 const buildBaseUrl = (req: Request) => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
@@ -30,7 +32,7 @@ const deleteLocalUploadIfExists = (url?: string) => {
     const abs = path.join(process.cwd(), pathname.replace(/^\/+/, ""));
     if (fs.existsSync(abs)) fs.unlinkSync(abs);
   } catch (err) {
-    console.error("deleteLocalUploadIfExists error:", (err as any)?.message || err);
+    logger.error({ err: (err as any)?.message || err }, "deleteLocalUploadIfExists error");
   }
 };
 
@@ -51,11 +53,19 @@ const mapToFullUrls = (item: any, baseUrl: string) => {
 export const getBlogItems = async (req: Request, res: Response): Promise<Response> => {
   try {
     const baseUrl = buildBaseUrl(req);
-    const items = await Blog.find().sort({ createdAt: -1 });
-    const mapped = items.map((item) => mapToFullUrls(item, baseUrl));
+    const { data: mapped, isCached } = await getOrSetCache(
+      "cache:blogs:all",
+      async () => {
+        const items = await Blog.find().sort({ createdAt: -1 });
+        return items.map((item) => mapToFullUrls(item, baseUrl));
+      },
+      86400
+    );
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, mapped, "Blog items fetched");
   } catch (error: any) {
-    console.error("getBlogItems error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getBlogItems error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -65,12 +75,21 @@ export const getBlogById = async (req: Request, res: Response): Promise<Response
   try {
     const baseUrl = buildBaseUrl(req);
     const { id } = req.params;
-    const item = await Blog.findById(id);
-    if (!item) return sendErrorResponse(res, 404, "Blog item not found");
-    const mapped = mapToFullUrls(item, baseUrl);
+    const { data: mapped, isCached } = await getOrSetCache(
+      `cache:blogs:id:${id}`,
+      async () => {
+        const item = await Blog.findById(id);
+        if (!item) return null;
+        return mapToFullUrls(item, baseUrl);
+      },
+      86400
+    );
+    if (!mapped) return sendErrorResponse(res, 404, "Blog item not found");
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, mapped, "Blog item fetched");
   } catch (error: any) {
-    console.error("getBlogById error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getBlogById error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -124,11 +143,12 @@ export const createBlog = async (req: Request, res: Response): Promise<Response>
 
     const doc = new Blog(payload);
     await doc.save();
+    await invalidateCache("cache:blogs:*", "cache:dashboard:*");
 
     const result = mapToFullUrls(doc, baseUrl);
     return sendSuccessResponse(res, result, "Blog item created");
   } catch (error: any) {
-    console.error("createBlog error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "createBlog error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -189,10 +209,11 @@ export const updateBlog = async (req: Request, res: Response): Promise<Response>
     const updated = await Blog.findByIdAndUpdate(id, update, { new: true, runValidators: true });
     if (!updated) return sendErrorResponse(res, 404, "Blog item not found");
 
+    await invalidateCache("cache:blogs:*", "cache:dashboard:*");
     const result = mapToFullUrls(updated, baseUrl);
     return sendSuccessResponse(res, result, "Blog item updated");
   } catch (error: any) {
-    console.error("updateBlog error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updateBlog error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -204,9 +225,10 @@ export const deleteBlog = async (req: Request, res: Response): Promise<Response>
     const deleted = await Blog.findByIdAndDelete(id);
     if (!deleted) return sendErrorResponse(res, 404, "Blog item not found");
     deleteLocalUploadIfExists((deleted as any).image as string | undefined);
+    await invalidateCache("cache:blogs:*", "cache:dashboard:*");
     return sendSuccessWithoutResponse(res, "Blog item deleted successfully");
   } catch (error: any) {
-    console.error("deleteBlog error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deleteBlog error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

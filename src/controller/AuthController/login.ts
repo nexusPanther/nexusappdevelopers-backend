@@ -4,6 +4,7 @@ import { Admin } from "../../models/AdminModal/AdminModal";
 import sanitize from "mongo-sanitize";
 import { getToken } from "../../utils/helperFun";
 import { sendErrorResponse, sendSuccessResponse } from "../../utils/responseFun";
+import logger from "../../utils/logger";
 
 const buildBaseUrl = (req: Request) => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
@@ -49,9 +50,18 @@ const Login = async (req: Request, res: Response): Promise<Response> => {
       updatedAt: (admin as any).updatedAt,
     };
 
+    const isProduction = process.env.NODE_ENV === "production";
+    res.cookie("nexus_session", token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? "strict" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: "/",
+    });
+
     return sendSuccessResponse(res, { user: payload, token }, "Login successful");
   } catch (error: any) {
-    console.error("Login error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "Login error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

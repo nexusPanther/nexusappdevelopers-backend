@@ -6,6 +6,7 @@ const AboutHeroSchema = new mongoose.Schema(
     highlightedHeading: { type: String, required: false, trim: true },
     paragraph: { type: String, required: false, trim: true },
     image: { type: String, required: false, trim: true },
+    videoUrl: { type: String, required: false, trim: true, default: "" },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
