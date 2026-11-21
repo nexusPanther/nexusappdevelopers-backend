@@ -24,8 +24,7 @@ Thumbs.db
 # Build outputs
 dist/
 build/
-.gitignore
-branch_structure.json
-temp_auto_push.bat
-temp_interactive_push.bat
+
+# Lock files
+package-lock.json
 config.bat

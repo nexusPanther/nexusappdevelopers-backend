@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import { Admin } from "../../models/AdminModal/AdminModal";
 import { getToken } from "../../utils/helperFun";
 import { sendErrorResponse, sendSuccessResponse } from "../../utils/responseFun";
+import logger from "../../utils/logger";
 
 const Signup = async (req: Request, res: Response): Promise<Response> => {
   try {
@@ -28,7 +29,7 @@ const Signup = async (req: Request, res: Response): Promise<Response> => {
 
     return sendSuccessResponse(res, { user: payload, token }, "Signup successful");
   } catch (error: any) {
-    console.error("Signup error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "Signup error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };

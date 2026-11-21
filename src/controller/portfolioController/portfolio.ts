@@ -7,6 +7,8 @@ import {
   sendSuccessResponse,
   sendSuccessWithoutResponse,
 } from "../../utils/responseFun";
+import { getOrSetCache, invalidateCache } from "../../Database/redis";
+import logger from "../../utils/logger";
 
 const buildBaseUrl = (req: Request) => {
   const envBase = process.env.BASE_URL?.trim().replace(/\/?$/, "");
@@ -38,9 +40,9 @@ const deleteLocalUploadIfExists = (url?: string) => {
     const abs = path.join(process.cwd(), pathname.replace(/^\/+/, ""));
     if (fs.existsSync(abs)) fs.unlinkSync(abs);
   } catch (err) {
-    console.error(
-      "deleteLocalUploadIfExists error:",
-      (err as any)?.message || err,
+    logger.error(
+      { err: (err as any)?.message || err },
+      "deleteLocalUploadIfExists error",
     );
   }
 };
@@ -73,11 +75,19 @@ export const getPortfolioItems = async (
 ): Promise<Response> => {
   try {
     const baseUrl = buildBaseUrl(req);
-    const items = await Portfolio.find().sort({ createdAt: -1 });
-    const mapped = items.map((item) => mapToFullUrls(item, baseUrl));
+    const { data: mapped, isCached } = await getOrSetCache(
+      "cache:portfolio:all",
+      async () => {
+        const items = await Portfolio.find().sort({ createdAt: -1 });
+        return items.map((item) => mapToFullUrls(item, baseUrl));
+      },
+      86400
+    );
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, mapped, "Portfolio items fetched");
   } catch (error: any) {
-    console.error("getPortfolioItems error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getPortfolioItems error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -90,12 +100,21 @@ export const getPortfolioById = async (
   try {
     const baseUrl = buildBaseUrl(req);
     const { id } = req.params;
-    const item = await Portfolio.findById(id);
-    if (!item) return sendErrorResponse(res, 404, "Portfolio item not found");
-    const mapped = mapToFullUrls(item, baseUrl);
+    const { data: mapped, isCached } = await getOrSetCache(
+      `cache:portfolio:id:${id}`,
+      async () => {
+        const item = await Portfolio.findById(id);
+        if (!item) return null;
+        return mapToFullUrls(item, baseUrl);
+      },
+      86400
+    );
+    if (!mapped) return sendErrorResponse(res, 404, "Portfolio item not found");
+    if (isCached) res.setHeader("X-Cache", "HIT-REDIS");
+    else res.setHeader("X-Cache", "MISS-DATABASE");
     return sendSuccessResponse(res, mapped, "Portfolio item fetched");
   } catch (error: any) {
-    console.error("getPortfolioById error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "getPortfolioById error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -167,12 +186,13 @@ export const createPortfolio = async (
 
     const doc = new Portfolio(payload);
     await doc.save();
+    await invalidateCache("cache:portfolio:*", "cache:dashboard:*");
 
     const result = mapToFullUrls(doc, baseUrl);
 
     return sendSuccessResponse(res, result, "Portfolio item created");
   } catch (error: any) {
-    console.error("createPortfolio error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "createPortfolio error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -291,11 +311,12 @@ export const updatePortfolio = async (
     if (!updated)
       return sendErrorResponse(res, 404, "Portfolio item not found");
 
+    await invalidateCache("cache:portfolio:*", "cache:dashboard:*");
     const result = mapToFullUrls(updated, baseUrl);
 
     return sendSuccessResponse(res, result, "Portfolio item updated");
   } catch (error: any) {
-    console.error("updatePortfolio error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "updatePortfolio error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
@@ -317,12 +338,13 @@ export const deletePortfolio = async (
     deleteLocalUploadIfExists(
       (deleted as any).productImage as string | undefined,
     );
+    await invalidateCache("cache:portfolio:*", "cache:dashboard:*");
     return sendSuccessWithoutResponse(
       res,
       "Portfolio item deleted successfully",
     );
   } catch (error: any) {
-    console.error("deletePortfolio error:", error?.message || error);
+    logger.error({ err: error?.message || error }, "deletePortfolio error");
     return sendErrorResponse(res, 500, "Internal server error");
   }
 };
